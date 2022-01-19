@@ -333,7 +333,14 @@ List:       bcc list_cont       ; If no start address, continue list at EFADDR
             jsr Buff2Byte       ;   ,,
             bcc start_list      ;   ,,
             sta RANGE_END       ;   ,,
-            ldx #$80            ; When X=$80, list won't stop after LIST_NUM
+            lda RANGE_END+1
+            cmp EFADDR+1
+            bcc lrange_bad
+            lda RANGE_END
+            cmp EFADDR
+            bcs lrange_ok
+lrange_bad: jmp list_r
+lrange_ok:  ldx #$80            ; When X=$80, list won't stop after LIST_NUM
             bne ListLine        ;   lines, but will go through range unless STOP
 list_cont:  lda X_PC            ; Otherwise, set the effective addresss to the
             sta EFADDR          ;  persistent counter to continue listing
@@ -375,13 +382,13 @@ continue:   jsr PrintBuff
             pla
             tax
             bpl skip_range      ; If X bit 7 is clear, don't check range
-            inx                 ;   Compensate for dex to keep bit 7 set
-            lda EFADDR+1        ;   Check to see if we've gone beyond the
-            cmp RANGE_END+1     ;     specified range
-            bcc skip_range      ;     ,,
-            lda EFADDR          ;     ,,
-            cmp RANGE_END       ;     ,,
-            bcs list_stop       ;   If so, end the list
+            inx                 ; Compensate for dex to keep bit 7 set
+            lda EFADDR+1        ; Check to see if we've gone beyond the
+            cmp RANGE_END+1     ;   specified range
+            bcc skip_range      ;   ,,
+            lda EFADDR          ;   ,,
+            cmp RANGE_END       ;   ,,
+            bcs list_stop       ; If so, end the list
 skip_range: jsr ISCNTC          ; Exit if STOP key is pressed
             beq list_stop       ; ,,          
             dex                 ; Exit if loop is done
@@ -1523,11 +1530,11 @@ is_defined: rts
 ExpandSym:  sty IDX_SYM
             jsr ResetOut
             jsr HexPrefix
-            lda BYTE_MOD        ; If the user has entered < after the label,
-            cmp #LOW_BYTE       ;   then insert only the low byte of the
-            beq insert_lo       ;   address
+            lda BYTE_MOD        ; If < has been specified, then insert only
+            cmp #LOW_BYTE       ;   the low byte of the address
+            beq insert_lo       ;   ,,
             lda SYMBOL_AH,y     ; If > or no modifier has been specified, then
-            jsr Hex             ;   insert the high byte
+            jsr Hex             ;   insert the high byte of the address
             lda BYTE_MOD        ;   ,,
             cmp #HIGH_BYTE      ; If > has been specified, then skip the low
             beq do_expand       ;   byte
