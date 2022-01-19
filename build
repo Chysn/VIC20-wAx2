@@ -1,0 +1,6 @@
+#!/bin/bash
+
+xa -l toc -o ./vic/wax2.bin ./src/wax2.asm
+printf "\x00\xa0" | cat - ./vic/wax2.bin > ./vic/wax2.prg
+cp ./vic/wax2.prg ~/vic20/wax2
+
