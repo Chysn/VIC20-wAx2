@@ -77,7 +77,7 @@ T_MEN       = "P"               ; Tool character P for plug-in menu
 T_USL       = $5c               ; Tool character GPB for user list
 T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
-LABEL       = $ab               ; Symbol dereferencer (-)
+LABEL       = "."               ; Symbol dereferencer (.)
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -159,6 +159,8 @@ CRSRRT      = $1d               ; Cursor right
 CRSRLF      = $9d               ; Cursor left
 RVS_ON      = $12               ; Reverse on
 RVS_OFF     = $92               ; Reverse off
+HIGH_BYTE   = $b1               ; High Byte (>)
+LOW_BYTE    = $b3               ; Low Byte (<)
 
 ; Assembler symbol table
 ; You can relocate and/or resize the symbol table by settnig SYM_END,
@@ -197,6 +199,7 @@ SEARCH_C    = $0250             ; Search counter
 INSTSIZE    = $0251             ; Instruction size
 IGNORE_RB   = $0252             ; Ignore relative branch range for forward refs
 TEMP_CALC   = $0253             ; Temporary calculation
+BYTE_MOD    = $0253             ; Byte modifier (high byte (>) or low byte (<))
 RANGE_END   = $0254             ; End of range (2 bytes)
 BREAKPOINT  = $0256             ; Breakpoint data (3 bytes)
 
@@ -285,6 +288,8 @@ Prepare:    sta TOOL_CHR        ; Store the tool character
             pha                 ;   to the appropriate tool
             jsr ResetIn         ; Initialize the input index for write
             sta IGNORE_RB       ; Clear Ignore Relative Branch flag
+            lda #0              ; Clear byte modifier
+            sta BYTE_MOD        ; ,,
             jsr Transcribe      ; Transcribe from CHRGET to INBUFFER
             lda #$ef            ; $0082 BEQ $008a -> BEQ $0073 (maybe)
             sta $83             ; ,,
@@ -639,7 +644,7 @@ asm_r:      rts
 ; Define Label
 ; Create a new label entry, and resolve any forward references to the
 ; new label.
-DefLabel:   jsr CharGet         ; Get the next character after the label;
+DefLabel:   jsr CharGet         ; Get the next character after the label sigil
             jsr SymbolIdx       ; Get a symbol index for the label in A
             bcs have_label      ;
             jmp SymError        ; Error if no symbol index could be secured
@@ -1371,8 +1376,8 @@ b102h_r:    jmp PrintBuff
 ; And also, initialize the location counter
 InitSym:    lda INBUFFER        
             beq LabelList       ; If the tool is alone, show the symbol table
-            cmp #LABEL          ; If - follows the tool, clear the symbol list
-            beq init_clear      ; ,,
+            cmp #"I"            ; If I follows the tool, initialize the symbol
+            beq init_clear      ;   table
             jsr RefreshPC       ; If no valid address is provided, just leave
             bcc init_r          ;   X_PC as it was
             lda #$00            ; Reset forward reference overflow counter
@@ -1389,30 +1394,29 @@ init_clear: lda #$00            ; Initialize bytes for the symbol table
             bpl loop            ;   ,,
 init_r:     rts
             
-; Get Symbol Index            
-SymbolIdx:  cmp #"@"            ; @ and > are special symbols that are always
-            bne spec_fwd        ;   defined as the highest symbol index.
-            ldy #MAX_LAB-1      ;   ,,
-            bne spec_lab        ;   ,,
-spec_fwd:   cmp #$b1            ; Handle the > label by giving it the special
-            bne sym_range       ;   symbol index, and then clearing out the
-            ldy #MAX_LAB-1      ;   address for the symbol so that it's treated
-            tya                 ;   as a forward reference
-            tax
-            lda #$00
-            sta SYMBOL_AL,x
-            sta SYMBOL_AH,x
-spec_lab:   lda #"@"+$80        ;   > is a forward reference, when used,
-            pha                 ;   but the special symbol is always "@"
-            bne sym_found
-sym_range:  cmp #"0"
-            bcc bad_label       ; Symbol no good if less than "0"
-            cmp #"Z"+1
-            bcs bad_label
-            cmp #"9"+1
-            bcc good_label
-            cmp #"A"
-            bcs good_label
+; Get Symbol Index
+SymbolIdx:  cmp #"!"
+            bne sym_range
+            ldy #MAX_LAB-1
+            lda #"!"+$80
+            pha
+            lda IDX_IN
+            cmp #5
+            bcc sym_found
+            lda #0
+            sta SYMBOL_AL,y
+            sta SYMBOL_AH,y
+            jmp sym_found
+sym_range:  cmp #"@"            ; Allowed label names are 0-9, A-Z, and @
+            beq good_label      ; ,,
+            cmp #"0"            ; ,,
+            bcc bad_label       ; ,,
+            cmp #"Z"+1          ; ,,
+            bcs bad_label       ; ,,
+            cmp #"9"+1          ; ,,
+            bcc good_label      ; ,,
+            cmp #"A"            ; ,,
+            bcs good_label      ; ,,
 bad_label:  clc
             rts      
 good_label: ora #$80            ; High bit set indicates symbol is defined
@@ -1500,7 +1504,7 @@ fwd_d:      jsr PrintBuff
 ; Label List Common            
 LabListCo:  jsr ResetOut
             jsr Space
-            lda #"-"
+            lda #LABEL
             jsr CharOut
             lda SYMBOL_D,x
             and #$7f
@@ -1519,34 +1523,24 @@ is_defined: rts
 ExpandSym:  sty IDX_SYM
             jsr ResetOut
             jsr HexPrefix
-            ldy #$01            ; See if the user has entered H or L after
-            lda ($7a),y         ;   the label
-            pha
-            ldy IDX_SYM
-            cmp #"L"            ; If L is specified, jump right to the low
-            beq insert_lo       ;   byte
-            lda SYMBOL_AH,y     ; Otherwise, add the high byte
-            jsr Hex             ; ,,
-            pla                 ; Pull and push back the CHRGET input
-            pha                 ; ,,
-            cmp #"H"            ; If the high byte was specified, skip
-            beq do_expand       ;   the low byte
+            lda BYTE_MOD        ; If the user has entered < after the label,
+            cmp #LOW_BYTE       ;   then insert only the low byte of the
+            beq insert_lo       ;   address
+            lda SYMBOL_AH,y     ; If > or no modifier has been specified, then
+            jsr Hex             ;   insert the high byte
+            lda BYTE_MOD        ;   ,,
+            cmp #HIGH_BYTE      ; If > has been specified, then skip the low
+            beq do_expand       ;   byte
 insert_lo:  lda SYMBOL_AL,y
-            jsr Hex
+            jsr Hex            
 do_expand:  lda #$00            ; Add delimiter, since the hex operand can
             jsr CharOut         ;   vary in length
             ldy #$00            ; Transcribe symbol expansion into the
 -loop:      lda OUTBUFFER,y     ;   input buffer
-            beq end_expand      ;   ,,
+            beq expand_r        ;   ,,
             jsr AddInput        ;   ,,
             iny                 ;   ,,
-            jmp loop            ;   ,,
-end_expand: pla                 ; Get the CHRGET character back
-            cmp #"L"            ; Discard L or H,
-            beq discard         ; ,,
-            cmp #"H"            ; ,,
-            bne expand_r
-discard:    jsr CHRGET
+            jmp loop            ;   ,,            
 expand_r:   jmp Transcribe        
             
 ; Resolve Forward Reference            
@@ -1639,14 +1633,10 @@ overflow:   inc OVERFLOW_F      ; Increment overflow counter if no records are
             jmp SymError        ;   can be caught, so keep going for multi-pass
 empty_rec:  tya
             ora #$80            ; Set the high bit to indicate record in use
-            pha
-            ldy #$01            ; Look at the next character in the CHRGET
-            lda ($7a),y         ;   buffer
-            tay
-            pla
-            cpy #"H"            ; If the next character is H, then set bit 6
-            bne store_rec       ;   to indicate that the high byte should
-            ora #$40            ;   be used on resolution
+            ldy BYTE_MOD        ; If the label was prefixed with >, then mark
+            cpy #HIGH_BYTE      ;   this forward record to use the high byte
+            bne store_rec       ;   on resolution, by setting bit 6 of the
+            ora #$40            ;   symbol forward label entry
 store_rec:  sta SYMBOL_F,x      ; Store the label index in the record
             lda EFADDR          ; Store the current effective address in the
             sta SYMBOL_FL,x     ;   forward reference record for (hopefully)
@@ -2257,18 +2247,40 @@ Param_16:   jsr HexPrefix
             pla
             jmp Hex
 
+; Expand External Program Counter
+; Replace asterisk with the X_PC
+ExpandXPC:  jsr ResetOut
+            jsr ShowPC
+            ldy #$00
+-loop:      lda OUTBUFFER,y
+            jsr AddInput
+            iny
+            cpy #$04
+            bne loop
+            ; Fall through to Transcribe
+            
 ; Transcribe to Buffer
 ; Get a character from the BASIC input buffer and transcribe it to the
 ; wAx input buffer. If the character is a BASIC token, then possibly
 ; explode it into individual characters.
-Transcribe: jsr CHRGET          ; Get character from input buffer
+Transcribe: lda #0              ; Clear the high or low byte modifier
+            sta BYTE_MOD        ; ,,
+post_mx:    jsr CHRGET          ; Get character from input buffer
             cmp #$00            ; If it's 0, then quit transcribing and return
             beq xscribe_r       ; ,,
             cmp #$ac            ; Replace an asterisk with the persistent
             beq ExpandXPC       ;   counter
             cmp #";"            ; If it's a comment, then quit transcribing
             beq comment         ;   unless we're in quote mode
-            cmp #LABEL          ; Handle symbolic labels
+            cmp #HIGH_BYTE      ; If it's > or <, it modifies the next label
+            bne ch_low          ; ,,
+            sta BYTE_MOD        ; ,,
+            jmp post_mx         ; ,, Get more, but don't clear the modifier
+ch_low:     cmp #LOW_BYTE       ; ,,
+            bne ch_label        ; ,,
+            sta BYTE_MOD        ; ,,
+            jmp post_mx         ; ,, Get more, but don't clear the modifier
+ch_label:   cmp #LABEL          ; Handle symbolic labels
             beq handle_sym      ; ,,
             cmp #QUOTE          ; If a quote is found, modify CHRGET so that
             bne ch_token        ;   spaces are no longer filtered out
@@ -2281,20 +2293,17 @@ ch_token:   cmp #$80            ; Is the character in A a BASIC token?
             cpy #$06            ;  and skip detokenization if it's been
             beq x_add           ;  modified.
             jsr Detokenize      ; Detokenize and continue transciption
-            jmp Transcribe      ; ,, (Carry is always set by Detokenize)
-x_add:      jsr AddInput        ; Add the text to the buffer
-            jmp Transcribe      ; (Carry is always set by AddInput)
+            jmp Transcribe      ; ,,
+x_add:      jsr AddInput        ; Add the text to the buffer and get more
+            jmp Transcribe      ; ,,
 xscribe_r:  jmp AddInput        ; Add the final zero, and fix CHRGET...
-handle_sym: ldy TOOL_CHR        ; The label character is not handled by the
-            cpy #T_SYM          ;   symbol init tool, because it's used to
-            beq x_add           ;   clear the symbol table
-            ldy $83             ; Don't handle symbols if the - is in quotes
+handle_sym: ldy $83             ; Don't handle symbols if the label is in quotes
             cpy #$06            ;   (as in an immediate operand, or text entry)
             beq x_add           ;   ,,
             ldy IDX_IN          ; If the label character occurs deep in the
             cpy #$0d            ;   input, don't handle a symbol. It's in the
             bcs x_add           ;   memory dump display.            
-            lda IDX_IN          ; If - is the first character in the input
+            lda IDX_IN          ; If @ is the first character in the input
             cmp #$04            ;   buffer after the address, defer the
             bne start_exp       ;   symbol for handling by the assembler
             lda #LABEL          ;   ,,
@@ -2321,18 +2330,6 @@ comment:    ldy $83
             sta $83             ; are no longer expanded
             lda #$00
 add_only:   beq x_add
-
-; Expand External Program Counter
-; Replace asterisk with the X_PC
-ExpandXPC:  jsr ResetOut
-            jsr ShowPC
-            ldy #$00
--loop:      lda OUTBUFFER,y
-            jsr AddInput
-            iny
-            cpy #$04
-            bne loop
-            jmp Transcribe
            
 ; Reset Output Buffer
 ResetOut:   lda #$00
