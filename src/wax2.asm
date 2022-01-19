@@ -197,7 +197,7 @@ SEARCH_C    = $0250             ; Search counter
 INSTSIZE    = $0251             ; Instruction size
 IGNORE_RB   = $0252             ; Ignore relative branch range for forward refs
 TEMP_CALC   = $0253             ; Temporary calculation
-RANGE_END   = $0254             ; End of range for Save and Copy (2 bytes)
+RANGE_END   = $0254             ; End of range (2 bytes)
 BREAKPOINT  = $0256             ; Breakpoint data (3 bytes)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -318,8 +318,19 @@ in_program: lda #$00            ; In a program, reset the keyboard buffer size
 ; COMMON LIST COMPONENT
 ; Shared entry point for Disassembler and Memory Dump
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-List:       bcs start_list      ; If the provided address is OK, disassemble
-            lda X_PC            ; Otherwise, set the effective addresss to the
+List:       bcc list_cont       ; If no start address, continue list at EFADDR
+            lda #$ff            ; Default range to top of memory
+            sta RANGE_END       ; ,,
+            sta RANGE_END+1     ; ,,
+            jsr Buff2Byte       ; 
+            bcc start_list      ; If an optional end address is provided, set
+            sta RANGE_END+1     ;   the end-of-range address
+            jsr Buff2Byte       ;   ,,
+            bcc start_list      ;   ,,
+            sta RANGE_END       ;   ,,
+            ldx #$80            ; When X=$80, list won't stop after LIST_NUM
+            bne ListLine        ;   lines, but will go through range unless STOP
+list_cont:  lda X_PC            ; Otherwise, set the effective addresss to the
             sta EFADDR          ;  persistent counter to continue listing
             lda X_PC+1          ;  after the last address
             sta EFADDR+1        ;  ,,
@@ -358,7 +369,15 @@ to_usr:     jsr PlugIn
 continue:   jsr PrintBuff      
             pla
             tax
-            jsr ISCNTC          ; Exit if STOP key is pressed
+            bpl skip_range      ; If X bit 7 is clear, don't check range
+            inx                 ;   Compensate for dex to keep bit 7 set
+            lda EFADDR+1        ;   Check to see if we've gone beyond the
+            cmp RANGE_END+1     ;     specified range
+            bcc skip_range      ;     ,,
+            lda EFADDR          ;     ,,
+            cmp RANGE_END       ;     ,,
+            bcs list_stop       ;   If so, end the list
+skip_range: jsr ISCNTC          ; Exit if STOP key is pressed
             beq list_stop       ; ,,          
             dex                 ; Exit if loop is done
             bne ListLine        ; ,,
@@ -369,8 +388,7 @@ continue:   jsr PrintBuff
             lda TOOL_CHR        ; If the breakpoint was set, don't update
             cmp #T_BRK          ;   the persistent counter or show a tool
             beq list_r          ;   prompt
-list_stop:  jsr EAtoPC          ; Update persistent counter with effective addr
-            lda #WEDGE          ; Provide a tool for the next page in the key-
+list_stop:  lda #WEDGE          ; Provide a tool for the next page in the key-
             sta KEYBUFF         ;   board buffer
             lda TOOL_CHR        ;   ,,
             sta KEYBUFF+1       ;   ,,
@@ -378,6 +396,7 @@ list_stop:  jsr EAtoPC          ; Update persistent counter with effective addr
             sta KEYBUFF+2       ;   ,,
             lda #$03            ;   ,,
             sta KBSIZE          ;   ,,
+            jsr EAtoPC          ; Update persistent counter with effective addr
 list_r:     jmp EnableBP        ; Re-enable breakpoint, if necessary
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
