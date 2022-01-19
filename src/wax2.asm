@@ -77,7 +77,7 @@ T_MEN       = "P"               ; Tool character P for plug-in menu
 T_USL       = $5c               ; Tool character GPB for user list
 T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
-LABEL       = "."               ; Symbol dereferencer (.)
+LABEL       = "@"               ; Symbol dereferencer (@)
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -1402,10 +1402,10 @@ init_clear: lda #$00            ; Initialize bytes for the symbol table
 init_r:     rts
             
 ; Get Symbol Index
-SymbolIdx:  cmp #"!"
+SymbolIdx:  cmp #"."
             bne sym_range
             ldy #MAX_LAB-1
-            lda #"!"+$80
+            lda #"."+$80
             pha
             lda IDX_IN
             cmp #5
@@ -2310,9 +2310,9 @@ handle_sym: ldy $83             ; Don't handle symbols if the label is in quotes
             ldy IDX_IN          ; If the label character occurs deep in the
             cpy #$0d            ;   input, don't handle a symbol. It's in the
             bcs x_add           ;   memory dump display.            
-            lda IDX_IN          ; If @ is the first character in the input
-            cmp #$04            ;   buffer after the address, defer the
-            bne start_exp       ;   symbol for handling by the assembler
+            lda IDX_IN          ; If . is the first character in the input
+            cmp #$06            ;   buffer after the address, defer the
+            bcs start_exp       ;   symbol for handling by the assembler
             lda #LABEL          ;   ,,
             jsr AddInput        ;   ,,
             jmp Transcribe      ;   ,,
