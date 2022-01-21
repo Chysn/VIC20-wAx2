@@ -48,7 +48,7 @@ MAX_LAB     = 19                ; Maximum number of user labels + 1
 MAX_FWD     = 12                ; Maximum number of forward references
 
 ; Tool Setup
-TOOL_COUNT  = $1a               ; How many tools are there?
+TOOL_COUNT  = $1b               ; How many tools are there?
 WEDGE       = "."               ; The wedge character
 T_DIS       = "D"               ; Tool character D for disassembly
 T_XDI       = "E"               ; Tool character E for extended opcodes
@@ -753,16 +753,67 @@ OutOfRange: ldx #$04            ; ?TOO FAR ERROR
             jmp CUST_ERR          
 
 ; Get Operand
-; Populate the operand for an instruction by looking forward in the buffer and
-; counting upcoming hex digits.
-GetOperand: jsr Buff2Byte       ; Get the first byte
+; Populate the operand for an instruction
+GetOperand: lda #1              ; 
+            sta INSTSIZE        ; ,,
+            jsr Buff2Byte       ; Get the first byte
             bcc getop_r         ; If invalid, return
             sta OPERAND+1       ; Default to being high byte
             jsr Buff2Byte
-            bcs high_byte       ; If an 8-bit operand is provided, move the high
-            lda OPERAND+1       ;   byte to the low byte. Otherwise, just
+            bcs high_byte       ; If an 8-bit operand is provided, the first
+            lda OPERAND+1       ;   byte is the low byte
+            dec INSTSIZE        ; Set to 0 if only one operand byte
+            dec IDX_IN          ; If there's one byte, step back the input index
 high_byte:  sta OPERAND         ;   set the low byte with the input
+            jsr CharGet         ; Check character after operand
+            cmp #"+"            ; Perform addition
+            beq add_op          ; ,,
+            cmp #"-"            ; Perform subtraction
+            beq sub_op
 getop_r:    rts
+sub_op:     jsr CharGet
+            jsr Char2Nyb
+            bcc getop_r
+            sta TEMP_CALC
+            sec
+            lda OPERAND
+            sbc TEMP_CALC
+            sta OPERAND
+            bcs repl_hex
+            dec OPERAND+1
+            jmp repl_hex
+add_op:     jsr CharGet         ; Get the character after the operator
+            jsr Char2Nyb        ; Treat it as a single hex digit
+            bcc getop_r         ; Return if invalid hex digit
+            clc                 ; Add the number to the operand
+            adc OPERAND         ; ,,
+            sta OPERAND         ; ,,
+            bcc repl_hex        ; ,,
+            inc OPERAND+1       ; ,,
+repl_hex:   ldx IDX_IN          ; Set the index of the + to 0 so that parsing
+            dex                 ;   ends where + used to be
+            dex                 ;   ,,
+            lda #0              ;   ,,
+            sta INBUFFER,x      ;   ,,
+            jsr ResetOut        ; Will be using the output buffer as tmp hex
+            ldx #8              ; Starting index of instruction operand
+            stx IDX_IN
+            lda INSTSIZE        ; If only one byte was provided (INSTSIZE=0),
+            beq pl1             ;   then update only the low byte (OPERAND)
+            lda OPERAND+1       ; Otherwise, there are two bytes, so start by
+            jsr Hex             ;   updating the high byte
+            jsr copy_op         ;   ,,
+            inc IDX_IN          ; Advance the index by 2 for the low byte
+            inc IDX_IN          ; ,,
+            jsr ResetOut        ; Same as above, reset the output buffer, which
+pl1:        lda OPERAND         ;   holds the hex value of the low byte
+            jsr Hex             ;   ,,
+copy_op:    ldx IDX_IN          ; Index of the input that we're copying TO
+            lda OUTBUFFER       ; Get first hex digit of output buffer
+            sta INBUFFER,x      ; Copy it to input at index
+            lda OUTBUFFER+1     ; Get second hex digit of output buffer
+            sta INBUFFER+1,x    ; Copy it to input at index
+pl_r:       rts
             
 ; Hypothesis Test
 ; Search through the language table for each opcode and disassemble it using
@@ -1379,21 +1430,33 @@ b102h_r:    jmp PrintBuff
 ; https://github.com/Chysn/wAx/wiki/Symbol-Table-Manager
 ; https://github.com/Chysn/wAx/wiki/Labels
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
-; Initialize Symbol Table
-; And also, initialize the location counter
-InitSym:    lda INBUFFER        
-            beq LabelList       ; If the tool is alone, show the symbol table
-            cmp #"I"            ; If I follows the tool, initialize the symbol
-            beq init_clear      ;   table
-            jsr RefreshPC       ; If no valid address is provided, just leave
-            bcc init_r          ;   X_PC as it was
-            lda #$00            ; Reset forward reference overflow counter
+; Set Persistent Counter
+SetPC:      lda #0              ; Reset forward reference overflow counter
             sta OVERFLOW_F      ; ,,
-EAtoPC:     lda EFADDR          ; Initialize persistent counter with effective
-            sta X_PC            ;   address
-            lda EFADDR+1        ;   ,,
-            sta X_PC+1          ;   ,,
-            rts
+            bcc setpc_r         ; Do only that if no address provided
+EAtoPC:     lda EFADDR          ; Move effective address to persistent counter
+            sta X_PC            ; ,,
+            lda EFADDR+1        ; ,,
+            sta X_PC+1          ; ,,
+setpc_r:    rts                 ; ,,
+            
+; Assign or Initialize Labels
+Labels:     lda INBUFFER        
+            beq LabelList       ; If the tool is alone, show the symbol table
+            jsr ResetIn
+            jsr CharGet
+            cmp #"-"            ; If - follows the tool, initialize the symbol
+            beq init_clear      ;   table
+            jsr SymbolIdx       ; Is this a valid symbol, and is there memory
+            bcc label_err       ;   to assign it?
+            jsr Buff2Byte
+            bcc label_err
+            sta SYMBOL_AH,y
+            jsr Buff2Byte
+            bcc label_err
+            sta SYMBOL_AL,y
+            rts            
+label_err:  jmp SymError        
 init_clear: lda #$00            ; Initialize bytes for the symbol table
             ldy #ST_SIZE-1      ;   See the Symbol Table section at the top for
 -loop:      sta SYMBOL_D,y      ;   information about resizing or relocating the
@@ -1402,6 +1465,8 @@ init_clear: lda #$00            ; Initialize bytes for the symbol table
 init_r:     rts
             
 ; Get Symbol Index
+; Return symbol index in Y and set Carry
+; Error (all symbols used, or bad symbol) if Carry clear
 SymbolIdx:  cmp #"."
             bne sym_range
             ldy #MAX_LAB-1
@@ -1971,11 +2036,13 @@ green:      lda #$1e            ; Green
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; HELP COMPONENT
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Help:       lda #<HelpScr       ; Print help screen
-            ldy #>HelpScr       ; ,,
-            jsr PrintStr        ; ,,
-            rts
-                      
+Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
+            ldy #>HelpScr1      ;   because it's longer than 256 bytes
+            jsr PrintStr        ;   ,,
+            lda #<HelpScr2      ; Print help screen 2
+            ldy #>HelpScr2      ; ,,
+            jmp PrintStr        ; ,,  
+                                
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; USER PLUG-IN
 ; https://github.com/Chysn/wAx/wiki/User-Plug-In
@@ -2449,22 +2516,22 @@ DirectMode: ldy CURLIN+1
 ; ToolTable contains the list of tools and addresses for each tool
 ToolTable:	.byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
             .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR,T_USL
-            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN
+            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,LABEL
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
-            .byte <InitSym-1,<BASICStage-1,<PlugIn-1,<List-1,
+            .byte <SetPC-1,<BASICStage-1,<PlugIn-1,<List-1,
             .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
-            .byte <Help-1,<PlugMenu-1
+            .byte <Help-1,<PlugMenu-1,<Labels-1
 ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
-            .byte >InitSym-1,>BASICStage-1,>PlugIn-1,>List-1
+            .byte >SetPC-1,>BASICStage-1,>PlugIn-1,>List-1
             .byte >Assemble-1,>Register-1,>Directory-1,>List-1,>Compare-1
-            .byte >Help-1,>PlugMenu-1
+            .byte >Help-1,>PlugMenu-1,>Labels-1
 
 ; Plug-In Menu Data           
-MenuText:   .asc " *** PLUG-IN MENU ***",$0d
+MenuText:   .asc LF," *** PLUG-IN MENU ***",LF,LF
             .asc ".P WAXFER",$0d
             .asc ".P RELOCATE",$0d
             .asc ".P DEBUG",$0d
@@ -2509,19 +2576,19 @@ Intro:      .asc LF,"  *** WAXPANDER ***"
 Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0
             .asc "P",$c0,$c0,"S",$c0,$c0,"PC",$c0,$c0,LF,".",";",$00
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr:    .asc LF,LF
-            .asc "D 6502 DIS  E 6502+EXT",LF
-            .asc "A ASSEMBLE  * SYMBOLS ",LF
-            .asc "G GO        B BRKPOINT",LF
-            .asc "R REGISTER  M MEMORY  ",LF
-            .asc "I TEXT      % BINARY  ",LF
-            .asc "T TRANSFER  C COMPARE ",LF
-            .asc "L LOAD      S SAVE    ",LF
-            .asc "F FILES     ",$5e," STAGE   ",LF
-            .asc "# DEC2HEX   $ HEX2DEC ",LF
-            .asc "U PLUG-IN   ",$5c," USR LIST",LF
-            .asc "P MENU      X EXIT",LF
-            .asc $00
+HelpScr1:   .asc LF,LF," *** WAX COMMANDS ***",LF,LF
+            .asc "D 6502 DIS E 6502+EXT",LF
+            .asc "A ASSEMBLE R REGISTER",LF
+            .asc "G GO       B BRKPOINT",LF
+            .asc "R MEMORY   I TEXT",LF
+            .asc "% BINARY   = ASSERT",LF
+            .asc "T TRANSFER C COMPARE",LF,$00
+HelpScr2:   .asc "@ LABELS   * SET PC",LF
+            .asc "L LOAD     S SAVE",LF
+            .asc "F FILES    ",$5e," STAGE",LF
+            .asc "# DEC2HEX  $ HEX2DEC",LF
+            .asc "U PLUG-IN  ",$5c," USR LIST",LF
+            .asc "P MENU     X EXIT",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
@@ -3281,10 +3348,8 @@ found_end:  lda MODIFIER        ; If the code is not relocatable, skip the
             jsr ShowAddr        ; ,,
             jsr AddBuffer       ; Add the output buffer to the BASIC line
             jsr mEndLine        ; Finish the first BASIC line
-            
             jmp mStart          ; Start adding lines of 6502 code
 merror:     jmp $cf08           ; ?SYNTAX ERROR, warm start
-            
 mStart:     jsr mChRange
             bcc range_ok
 mdone:      jsr mEnd            ; Add $00,$00 to the the program
@@ -3351,8 +3416,7 @@ next_byte:  dec $08
 ; because BASIC can do that.
 LinkBytes:  lda #$ff            ; Add two $ff bytes to start the next
             jsr AddByte         ;   BASIC line. These will be set by the BASIC
-            jsr AddByte         ;   rechain operation at the end of the build
-            rts
+            jmp AddByte         ;   rechain operation at the end of the build
  
 ; Add Line Number            
 LineNumber: lda LINE_NUM        ; Add the current line number to the
@@ -3411,8 +3475,7 @@ mrestore:   lda FAIL_POINT      ; Reset the bytes at the previous
 ; End the BASIC line or program
 mEnd:       jsr mEndLine            
 mEndLine:   lda #$00
-            jsr AddByte
-            rts
+            jmp AddByte
 
 ; Add Output Buffer
 ; Paste output buffer into the BASIC program, without the ending $00            
