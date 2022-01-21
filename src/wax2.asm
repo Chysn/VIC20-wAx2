@@ -3032,10 +3032,11 @@ Complete:   lda #179            ; Close the progress bar
             bit RUNNING         ; Was any data received?
             bpl comp_r          ;   If not, just end without showing anything
 is_data:    jsr ResetOut        ; Show final locations...
-            lda #"."            ;    Disassemble tool
+            jsr wAxPrompt       ;    wAx prompt
+            lda #T_DIS          ;    Disassemble tool
             jsr CharOut         ;    ,,
             jsr ShowPC          ;    Starting address
-            lda #";"            ;      to
+            lda #" "            ;      to
             jsr CharOut         ;      ,,
             jsr ShowAddr        ;    Ending address
             jsr PrintBuff       ; ,,
@@ -3087,7 +3088,7 @@ addchar:    ldy KBSIZE          ; Add the character received to keyboard buffer
 ser_r:      jmp RFI             ; Return from the User Port interrupt
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; WAXFER
+; RELOCATE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Relocate Workspace
 SRC_END     = $0247             ; End of source range (2 bytes)
