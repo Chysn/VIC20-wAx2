@@ -186,6 +186,7 @@ MNEM        = $a4               ; Current Mnemonic (2 bytes)
 EFADDR      = $a6               ; Program Counter (2 bytes)
 CHARDISP    = $a8               ; Character display for Memory (2 bytes)
 LANG_PTR    = $a8               ; Language Pointer (2 bytes)
+PREV_IDX    = $a8               ; Previous index
 OPCODE      = $aa               ; Assembly target for hypotesting
 OPERAND     = $ab               ; Operand storage (2 bytes)
 IDX_OUT     = $ad               ; Buffer index - Output
@@ -207,21 +208,21 @@ BREAKPOINT  = $0256             ; Breakpoint data (3 bytes)
 ; wAx API JUMP TABLE
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; This JMP table starts at $a000
-jInstall:   jmp Install
-jBuff2Byte: jmp Buff2Byte
-jCharGet:   jmp CharGet
-jCharOut:   jmp CharOut
-jHex:       jmp Hex
-jIncAddr:   jmp IncAddr
-jIncPC:     jmp IncPC
-jLookup:    jmp Lookup
-jPrintBuff: jmp PrintBuff
-jResetIn:   jmp ResetIn
-jResetOut:  jmp ResetOut
-jShowAddr:  jmp ShowAddr
-jShowPC:    jmp ShowPC
-jEAtoPC:    jmp EAtoPC
-jPrintStr:  jmp PrintStr
+jInstall:   jmp Install         ; a000
+jBuff2Byte: jmp Buff2Byte       ; a003
+jCharGet:   jmp CharGet         ; a006
+jCharOut:   jmp CharOut         ; a009
+jHex:       jmp Hex             ; a00c
+jIncAddr:   jmp IncAddr         ; a00f
+jIncPC:     jmp IncPC           ; a012
+jLookup:    jmp Lookup          ; a015
+jPrintBuff: jmp PrintBuff       ; a018
+jResetIn:   jmp ResetIn         ; a01a
+jResetOut:  jmp ResetOut        ; a01d
+jShowAddr:  jmp ShowAddr        ; a020
+jShowPC:    jmp ShowPC          ; a023
+jEAtoPC:    jmp EAtoPC          ; a026
+jPrintStr:  jmp PrintStr        ; a029
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -384,9 +385,9 @@ continue:   jsr PrintBuff
             lda EFADDR+1        ; Check to see if we've gone beyond the
             cmp RANGE_END+1     ;   specified range
             bcc skip_range      ;   ,,
-            lda EFADDR          ;   ,,
-            cmp RANGE_END       ;   ,,
-            bcs list_stop       ; If so, end the list
+            lda RANGE_END       ;   ,,
+            cmp EFADDR          ;   ,,
+            bcc list_stop       ; If so, end the list
 skip_range: jsr ISCNTC          ; Exit if STOP key is pressed
             beq list_stop       ; ,,          
             dex                 ; Exit if loop is done
@@ -752,7 +753,9 @@ OutOfRange: ldx #$04            ; ?TOO FAR ERROR
 
 ; Get Operand
 ; Populate the operand for an instruction
-GetOperand: lda #1              ; 
+GetOperand: lda IDX_IN          ; Save starting index for arithmetic conversion
+            sta PREV_IDX        ; ,,
+            lda #1              ; Operand size-1 for arithmetic conversion
             sta INSTSIZE        ; ,,
             jsr Buff2Byte       ; Get the first byte
             bcc getop_r         ; If invalid, return
@@ -788,13 +791,14 @@ add_op:     jsr CharGet         ; Get the character after the operator
             sta OPERAND         ; ,,
             bcc repl_hex        ; ,,
             inc OPERAND+1       ; ,,
-repl_hex:   ldx IDX_IN          ; Set the index of the + to 0 so that parsing
-            dex                 ;   ends where + used to be
-            dex                 ;   ,,
-            lda #0              ;   ,,
+repl_hex:   ldx IDX_IN          ; Set the index of the operator and its
+            dex                 ;   argument to 1, so that CharGet no longer
+            dex                 ;   find them
+            lda #1              ;   ,,
             sta INBUFFER,x      ;   ,,
+            sta INBUFFER+1,x    ;   ,,
             jsr ResetOut        ; Will be using the output buffer as tmp hex
-            ldx #8              ; Starting index of instruction operand
+            ldx PREV_IDX        ; Starting index of instruction operand
             stx IDX_IN
             lda INSTSIZE        ; If only one byte was provided (INSTSIZE=0),
             beq pl1             ;   then update only the low byte (OPERAND)
@@ -2161,33 +2165,20 @@ CharGet:    ldx IDX_IN
             inc IDX_IN
             plp
             rts             
-            
-; Buffer to Byte
-; Get two characters from the buffer and evaluate them as a hex byte
-Buff2Byte:  jsr CharGet
-            jsr Char2Nyb
-            bcc buff2_r         ; Return with Carry clear if invalid
-            asl                 ; Multiply high nybble by 16
-            asl                 ;   ,,
-            asl                 ;   ,,
-            asl                 ;   ,,
-            sta WORK
-            jsr CharGet
-            jsr Char2Nyb
-            bcc buff2_r         ; Clear Carry flag indicates invalid hex
-            ora WORK            ; Combine high and low nybbles
-            ;sec                ; Set Carry flag indicates success
-buff2_r:    rts
-       
+                   
 ; Is Buffer Match            
 ; Does the input buffer match the output buffer?
 ; Carry is set if there's a match, clear if not
-IsMatch:    ldy #$06            ; Offset for character after address
--loop:      lda OUTBUFFER,y     ; Compare the assembly with the disassembly
-            cmp INBUFFER-2,y    ;   in the buffers
+IsMatch:    ldy #6              ; Offset for input after address
+            ldx #6              ; Offset for output after address
+-loop:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
+            cmp #$01            ;   But ignore #$01
+            beq match_ok        ;   ,,
+            cmp OUTBUFFER,x     ;   ,,
             bne not_found       ; See Lookup subroutine above
-            iny
-            cpy IDX_OUT
+            inx
+match_ok:   iny
+            cpx IDX_OUT
             bne loop            ; Loop until the buffer is done
             sec                 ; This matches; set carry
             rts
@@ -2206,6 +2197,23 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
             bcc not_found       ; See Lookup subroutine above
             sbc #"A"-$0a        ; The nybble value is 10-15
             rts
+
+; Buffer to Byte
+; Get two characters from the buffer and evaluate them as a hex byte
+Buff2Byte:  jsr CharGet
+            jsr Char2Nyb
+            bcc buff2_r         ; Return with Carry clear if invalid
+            asl                 ; Multiply high nybble by 16
+            asl                 ;   ,,
+            asl                 ;   ,,
+            asl                 ;   ,,
+            sta WORK
+            jsr CharGet
+            jsr Char2Nyb
+            bcc buff2_r         ; Clear Carry flag indicates invalid hex
+            ora WORK            ; Combine high and low nybbles
+            ;sec                ; Set Carry flag indicates success
+buff2_r:    rts
             
 ; Increment Effective Address
 ; Get the EA byte and advance EA by one
@@ -3036,8 +3044,7 @@ is_data:    jsr ResetOut        ; Show final locations...
             lda #T_DIS          ;    Disassemble tool
             jsr CharOut         ;    ,,
             jsr ShowPC          ;    Starting address
-            lda #" "            ;      to
-            jsr CharOut         ;      ,,
+            jsr Space           ;      to
             jsr ShowAddr        ;    Ending address
             jsr PrintBuff       ; ,,
             bit BASIC           ; Rechain BASIC program, if specified with B
