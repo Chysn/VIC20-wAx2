@@ -1651,13 +1651,16 @@ get_admode: cmp #RELATIVE       ; If it's a relative branch instruction,
             cmp #IMPLIED        ; If an implied mode instruction is somehow
             bne load_immed      ;   being resolved, throw ASSEMBLY ERROR
             jmp CannotRes       ;   ,,
-load_abs:   lda EFADDR          ; For an absolute mode instruction, just
-            ldy #$01            ;   transfer the two bytes over
-            sta (CHARAC),y      ;   ,,
-            lda EFADDR+1        ;   ,,
+load_abs:   lda EFADDR          ; For an absolute mode instruction, add the
+            ldy #$01            ;   value of the reference to the existing
+            clc                 ;   value of the operand, to account for
+            adc (CHARAC),y      ;   arithmetic (+ or -) operations to the
+            sta (CHARAC),y      ;   absolute address
             iny                 ;   ,,
+            lda EFADDR+1        ;   ,,
+            adc (CHARAC),y      ;   ,,
             sta (CHARAC),y      ;   ,,
-            jmp clear_back      ; Go back and see if there are more to resolve
+            jmp clear_back
 load_rel:   lda EFADDR          ; The target is the current effective address
             sec                 ; Subtract the reference address and add
             sbc CHARAC          ;   two to get the offset
@@ -1671,9 +1674,11 @@ load_immed: lda #$40            ; Check bit 6 of the label byte of the forward
             beq load_low        ;   means that the user wants the high byte
             lda EFADDR+1        ;   of the symbol target
             .byte $3c           ; Skip word
-load_low:   lda EFADDR          ; For other instructions
-            ldy #$01
-            sta (CHARAC),y
+load_low:   lda EFADDR          ; For other instructions, add the reference
+            ldy #$01            ;   value to the existing address, to account
+            clc                 ;   for arithmetic operations (+ and -)
+            adc (CHARAC),y      ;   ,,
+            sta (CHARAC),y      ;   ,,
 clear_back: lda #$00            ; Clear the forward reference table record for
             sta SYMBOL_F,x      ;   re-use, and go back for additional
             jmp ResolveFwd      ;   forward references
