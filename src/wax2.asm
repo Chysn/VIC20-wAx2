@@ -333,11 +333,9 @@ List:       bcc list_cont       ; If no start address, continue list at EFADDR
             jsr Buff2Byte       ;   ,,
             bcc start_list      ;   ,,
             sta RANGE_END       ;   ,,
-            lda RANGE_END+1
-            cmp EFADDR+1
-            bcc lrange_bad
-            lda RANGE_END
             cmp EFADDR
+            lda RANGE_END+1
+            sbc EFADDR+1
             bcs lrange_ok
 lrange_bad: jmp list_r
 lrange_ok:  ldx #$80            ; When X=$80, list won't stop after LIST_NUM
