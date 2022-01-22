@@ -1,0 +1,4 @@
+#!/bin/bash
+
+minipro -p AM28C64B@DIP28 -w ./vic/wax2.eep
+

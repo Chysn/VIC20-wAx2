@@ -109,6 +109,12 @@ ASCFLT      = $dcf3             ; Convert base-10 to FAC1
 MAKADR      = $d7f7             ; FAC1 to Integer
 DEVICE      = $ba               ; Save device
 ISCNTC      = $ffe1             ; Check Stop key
+FNDVAR      = $d0e7             ; Find variable
+LODFAC      = $dba2             ; Move variable to FAC1
+STORFAC     = $dbd4             ; Store FAC1 to memory
+MAKFP       = $d391             ; 2-byte integer to FAC1
+SGNFAC      = $dc2b             ; Sign of FAC1 (A=$ff if negative)
+LAPLUS      = $d867             ; Add FAC2 to FAC1
 
 ; System resources - Vectors and Pointers
 IGONE       = $0308             ; Vector to GONE
@@ -179,7 +185,7 @@ SYMBOL_FH   = SYMBOL_FL+MAX_FWD ;   Forward reference high bytes
 OVERFLOW_F  = SYMBOL_FH+MAX_FWD ; Symbol unresolved reference overflow count
 
 ; wAx workspace
-X_PC        = $03               ; Persistent Counter (2 bytes)
+C_PT        = $03               ; Command Pointer (2 bytes)
 USER_VECT   = $05               ; Plug-in vector (2 bytes)
 WORK        = $a4               ; Temporary workspace (2 bytes)
 MNEM        = $a4               ; Current Mnemonic (2 bytes)
@@ -214,14 +220,14 @@ jCharGet:   jmp CharGet         ; a006
 jCharOut:   jmp CharOut         ; a009
 jHex:       jmp Hex             ; a00c
 jIncAddr:   jmp IncAddr         ; a00f
-jIncPC:     jmp IncPC           ; a012
+jIncCP:     jmp IncCP           ; a012
 jLookup:    jmp Lookup          ; a015
 jPrintBuff: jmp PrintBuff       ; a018
 jResetIn:   jmp ResetIn         ; a01a
 jResetOut:  jmp ResetOut        ; a01d
 jShowAddr:  jmp ShowAddr        ; a020
-jShowPC:    jmp ShowPC          ; a023
-jEAtoPC:    jmp EAtoPC          ; a026
+jShowCP:    jmp ShowCP          ; a023
+jEAtoCP:    jmp EAtoCP          ; a026
 jPrintStr:  jmp PrintStr        ; a029
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -294,7 +300,7 @@ Prepare:    sta TOOL_CHR        ; Store the tool character
             jsr Transcribe      ; Transcribe from CHRGET to INBUFFER
             lda #$ef            ; $0082 BEQ $008a -> BEQ $0073 (maybe)
             sta $83             ; ,,
-RefreshPC:  jsr ResetIn         ; Re-initialize for buffer read
+RefreshEA:  jsr ResetIn         ; Re-initialize for buffer read
             jsr Buff2Byte       ; Convert 2 characters to a byte   
             bcc main_r          ; Fail if the byte couldn't be parsed
             sta EFADDR+1        ; Save to the EFADDR high byte
@@ -341,9 +347,9 @@ List:       bcc list_cont       ; If no start address, continue list at EFADDR
 lrange_bad: jmp list_r
 lrange_ok:  ldx #$80            ; When X=$80, list won't stop after LIST_NUM
             bne ListLine        ;   lines, but will go through range unless STOP
-list_cont:  lda X_PC            ; Otherwise, set the effective addresss to the
-            sta EFADDR          ;  persistent counter to continue listing
-            lda X_PC+1          ;  after the last address
+list_cont:  lda C_PT            ; Otherwise, set the effective addresss to the
+            sta EFADDR          ;  Command Pointer to continue listing
+            lda C_PT+1          ;  after the last address
             sta EFADDR+1        ;  ,,
 start_list: ldx #LIST_NUM       ; Default if no number has been provided
 ListLine:   txa
@@ -397,7 +403,7 @@ skip_range: jsr ISCNTC          ; Exit if STOP key is pressed
             and #$01            ;   ,,
             bne ListLine        ;   ,,
             lda TOOL_CHR        ; If the breakpoint was set, don't update
-            cmp #T_BRK          ;   the persistent counter or show a tool
+            cmp #T_BRK          ;   the Command Pointer or show a tool
             beq list_r          ;   prompt
 list_stop:  lda #WEDGE          ; Provide a tool for the next page in the key-
             sta KEYBUFF         ;   board buffer
@@ -407,7 +413,7 @@ list_stop:  lda #WEDGE          ; Provide a tool for the next page in the key-
             sta KEYBUFF+2       ;   ,,
             lda #$03            ;   ,,
             sta KBSIZE          ;   ,,
-            jsr EAtoPC          ; Update persistent counter with effective addr
+            jsr EAtoCP          ; Update Command Pointer with effective addr
 list_r:     jmp EnableBP        ; Re-enable breakpoint, if necessary
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -791,12 +797,11 @@ add_op:     jsr CharGet         ; Get the character after the operator
             sta OPERAND         ; ,,
             bcc repl_hex        ; ,,
             inc OPERAND+1       ; ,,
-repl_hex:   ldx IDX_IN          ; Set the index of the operator and its
-            dex                 ;   argument to 1, so that CharGet no longer
-            dex                 ;   find them
-            lda #1              ;   ,,
-            sta INBUFFER,x      ;   ,,
-            sta INBUFFER+1,x    ;   ,,
+repl_hex:   dec IDX_IN          ; Set the index of the operator and its
+            dec IDX_IN          ;   argument to 1, so that the Hypotest
+            lda #1              ;   compare no longer sees them
+            jsr AddInput        ;   ,,
+            jsr AddInput        ;   ,,
             jsr ResetOut        ; Will be using the output buffer as tmp hex
             ldx PREV_IDX        ; Starting index of instruction operand
             stx IDX_IN
@@ -804,19 +809,19 @@ repl_hex:   ldx IDX_IN          ; Set the index of the operator and its
             beq pl1             ;   then update only the low byte (OPERAND)
             lda OPERAND+1       ; Otherwise, there are two bytes, so start by
             jsr Hex             ;   updating the high byte
-            jsr copy_op         ;   ,,
-            inc IDX_IN          ; Advance the index by 2 for the low byte
-            inc IDX_IN          ; ,,
+            jsr CopyOp          ;   ,,
             jsr ResetOut        ; Same as above, reset the output buffer, which
 pl1:        lda OPERAND         ;   holds the hex value of the low byte
             jsr Hex             ;   ,,
-copy_op:    ldx IDX_IN          ; Index of the input that we're copying TO
-            lda OUTBUFFER       ; Get first hex digit of output buffer
-            sta INBUFFER,x      ; Copy it to input at index
+            ; Fall through to CopyOp
+ 
+; Copy Hex
+; From the output buffer to the input buffer           
+CopyOp:     lda OUTBUFFER       ; Get first hex digit of output buffer
+            jsr AddInput        ;   Copy it to input
             lda OUTBUFFER+1     ; Get second hex digit of output buffer
-            sta INBUFFER+1,x    ; Copy it to input at index
-pl_r:       rts
-            
+            jmp AddInput        ;   Copy it to input
+           
 ; Hypothesis Test
 ; Search through the language table for each opcode and disassemble it using
 ; the opcode provided for the candidate instruction. If there's a match, then
@@ -862,12 +867,12 @@ match:      lda EFADDR          ; Set the INSTSIZE location to the number of
             sec                 ;   bytes that need to be programmed
             sbc #OPCODE         ;   ,,
             sta INSTSIZE        ;   ,,
-            jmp RefreshPC       ; Restore the effective address to target addr
+            jmp RefreshEA       ; Restore the effective address to target addr
 test_rel:   lda #$0a            ; For relative branch instructions, first check
             sta IDX_OUT         ;   the name of the instruction. If that checks
             jsr IsMatch         ;   out, compute the relative branch offset and
             bcc reset           ;   insert it into memory, if it's within range
-            jsr RefreshPC       ;   ,,
+            jsr RefreshEA       ;   ,,
             jsr ComputeRB       ;   ,,
             sty OPERAND         ;   ,,
             lda #$02            ;   ,, 
@@ -986,12 +991,12 @@ Tester:     ldy #$00
             bne loop
 test_r:     tya                 ; Update effective address with number of
             clc                 ;   bytes tested, in order to update the
-            adc EFADDR          ;   persistent counter
-            sta X_PC            ;   ,,
+            adc EFADDR          ;   Command Pointer
+            sta C_PT            ;   ,,
             lda #$00            ;   ,,
             adc EFADDR+1        ;   ,,
-            sta X_PC+1          ;   ,,
-            rts
+            sta C_PT+1          ;   ,,
+            jmp CPtoBASIC
 test_err:   jmp MisError
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -1095,7 +1100,7 @@ SetupVec:   lda #<main          ; Intercept GONE to process wedge
 ; BRK Trapper
 ; Replaces the default BRK handler. Gets registers from hardware interrupt
 ; and puts them in the SYS register storage locations. Gets program counter
-; and stores it in the persistent counter location. Then falls through
+; and stores it in the Command Pointer location. Then falls through
 ; to register display.
 Break:      pla                 ; Get values from stack and put them in the
             tay                 ;   proper registers
@@ -1106,7 +1111,7 @@ Break:      pla                 ; Get values from stack and put them in the
             cld                 ; Escape hatch for accidentally-set Decimal flag
             jsr SYS_TAIL        ; Store regiters in SYS locations
             pla                 ; Get Program Counter from interrupt and put
-            sta SYS_DEST        ;   it in the persistent counter
+            sta SYS_DEST        ;   it in the Command Pointer
             pla                 ;   ,,
             sta SYS_DEST+1      ;   ,,
             lda #<BreakMsg      ; Print BRK indicator
@@ -1203,9 +1208,9 @@ MemLoad:    jsr ResetIn         ; Reset the input buffer because there's no addr
             jsr CHKIN
             bcs open_err
             jsr CHRIN
-            sta X_PC
+            sta C_PT
             jsr CHRIN
-            sta X_PC+1
+            sta C_PT+1
 open_err:   jsr CLRCHN
             lda #$42
             jsr CLOSE       
@@ -1227,11 +1232,11 @@ show_range: jsr ResetOut
             ldx DEVICE          ; If the device numbr is 1, skip the start/end
             cpx #$01            ;   display
             bne disk
-            ldx $033d           ; Update the persistent counter with the start
-            stx X_PC            ;   of memory loaded from cassette
+            ldx $033d           ; Update the Command Pointer with the start
+            stx C_PT            ;   of memory loaded from cassette
             ldx $033e           ;   ,,
-            stx X_PC+1          ;   ,,
-disk:       jsr ShowPC          ; Show the persistent counter
+            stx C_PT+1          ;   ,,
+disk:       jsr ShowCP          ; Show the Command Pointer
             jsr Space           ; Space between start and end
             lda $af             ; Show the end of the loaded range
             jsr Hex             ; ,,
@@ -1297,6 +1302,7 @@ srch_stop:  jsr ResetOut        ; Start a new output buffer to indicate the
             jsr Space           ;   followed by a space
             jsr ShowAddr        ;   ,,
             jsr PrintBuff       ;   ,,
+            jsr CPtoBASIC       ; Update CP variable
 srch_r:     rts   
 
 ; Code Search
@@ -1364,13 +1370,13 @@ MemCopy:    bcc copy_err        ; Get parameters as 16-bit hex addresses for
             sta RANGE_END       ; ,,
             jsr Buff2Byte       ; Target
             bcc copy_err        ; ,,
-            sta X_PC+1          ; ,,
+            sta C_PT+1          ; ,,
             jsr Buff2Byte       ; ,,    
             bcc copy_err        ; ,,
-            sta X_PC            ; ,,
+            sta C_PT            ; ,,
             ldx #$00            ; Copy memory from the start address...
 -loop:      lda (EFADDR,x)      ; ,,
-            sta (X_PC,x)        ; ...To the target address
+            sta (C_PT,x)        ; ...To the target address
             lda EFADDR+1        ; ,,
             cmp RANGE_END+1     ; Have we reached the end of the copy range?
             bne advance         ; ,,
@@ -1378,9 +1384,10 @@ MemCopy:    bcc copy_err        ; Get parameters as 16-bit hex addresses for
             cmp RANGE_END       ; ,,
             beq copy_end        ; If so, leave the copy tool
 advance:    jsr IncAddr         ; If not, advance the effective address and the
-            jsr IncPC           ;   persistent counter
+            jsr IncCP           ;   Command Pointer
             jmp loop            ;   and copy the next byte
-copy_end:   jmp IncPC           ; Advance persistent counter  
+copy_end:   jsr IncCP           ; Advance Command Pointer
+            jmp CPtoBASIC       ; Update CP variable and end  
 copy_err:   jmp SYNTAX_ERR      ; ?SYNTAX ERROR if invalid parameters
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -1432,20 +1439,43 @@ b102h_r:    jmp PrintBuff
 ; https://github.com/Chysn/wAx/wiki/Symbol-Table-Manager
 ; https://github.com/Chysn/wAx/wiki/Labels
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
-; Set Persistent Counter
-SetPC:      lda #0              ; Reset forward reference overflow counter
+; Set Command Pointer
+SetCP:      lda #0              ; Reset forward reference overflow counter
             sta OVERFLOW_F      ; ,,
-            bcc setpc_r         ; Do only that if no address provided
-EAtoPC:     lda EFADDR          ; Move effective address to persistent counter
-            sta X_PC            ; ,,
+            bcs EAtoCP          ; Do only that if no address provided
+            rts
+EAtoCP:     lda EFADDR          ; Move effective address to Command Pointer
+            sta C_PT            ; ,,
             lda EFADDR+1        ; ,,
-            sta X_PC+1          ; ,,
-setpc_r:    rts                 ; ,,
+            sta C_PT+1          ; ,,
+            ; Fall through to CPtoBASIC
+            
+CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
+            beq cp2bas_r        ; ,,
+            lda #"C"            ; Create the floating-point variable name CP
+            sta $45             ;   for "Command Pointer"
+            lda #"P"            ;   ,,
+            sta $46             ;   ,,
+            jsr FNDVAR          ;   Find or create variable
+            ldy C_PT            ; Convert the Command Pointer integer to a
+            lda C_PT+1          ;   floating-point number and store it in
+            jsr MAKFP           ;   FAC1
+            jsr SGNFAC          ; Is the result negative?
+            cmp #$ff            ; ,,
+            bne cp_pos          ; If not, there's nothing that needs to be done
+            lda #<F65536        ; If FAC1 is negative, it means that it's
+            ldy #>F65536        ;   $8000 or more. Add 65536 to make CP the
+            jsr LAPLUS          ;   actual address.
+cp_pos:     ldx $47             ; Store the floating-point number in FAC1 to
+            ldy $48             ;   the variable memory
+            jsr STORFAC         ;   ,,
+cp2bas_r:   rts                 ; ,,
             
 ; Assign or Initialize Labels
-Labels:     lda INBUFFER        
-            beq LabelList       ; If the tool is alone, show the symbol table
-            jsr ResetIn
+Labels:     lda INBUFFER 
+            bne set_lab         ; If the tool is alone, show the symbol table
+            jmp LabelList       ; ,,
+set_lab:    jsr ResetIn
             jsr CharGet
             cmp #"-"            ; If - follows the tool, initialize the symbol
             beq init_clear      ;   table
@@ -1454,9 +1484,14 @@ Labels:     lda INBUFFER
             jsr Buff2Byte
             bcc label_err
             sta SYMBOL_AH,y
-            jsr Buff2Byte
-            bcc label_err
-            sta SYMBOL_AL,y
+            jsr Buff2Byte       ; Get the low byte of the value
+            bcs llow_ok         ; If there's no low byte provided, then the
+            lda SYMBOL_AH,y     ;   only valid byte is treated as the low
+            tax                 ;   byte, and the high byte is set to 0.
+            lda #0              ;   ,,
+            sta SYMBOL_AH,y     ;   This allows setting a label using an
+            txa                 ;   8-bit value.
+llow_ok:    sta SYMBOL_AL,y
             rts            
 label_err:  jmp SymError        
 init_clear: lda #$00            ; Initialize bytes for the symbol table
@@ -1533,13 +1568,13 @@ next_label: pla
             inx
             cpx #MAX_LAB
             bne loop
-            jsr ResetOut        ; Show the value of the persistent counter
+            jsr ResetOut        ; Show the value of the Command Pointer
             jsr Space           ; ,,
             jsr Space           ; ,,
             lda #"*"            ; ,,
             jsr CharOut         ; ,,
             jsr Space           ; ,,
-            jsr ShowPC          ; ,,
+            jsr ShowCP          ; ,,
             lda OVERFLOW_F      ; Show the overflow forward reference count
             beq lablist_r       ;   (if any)
             pha                 ;   ,,
@@ -1944,10 +1979,10 @@ Compare:    bcc cerror          ; Error if the first address is no good
             sta RANGE_END       ; ,,
             jsr Buff2Byte       ; Get high byte of compare start
             bcc cerror          ; ,,
-            sta X_PC+1          ; ,,
+            sta C_PT+1          ; ,,
             jsr Buff2Byte       ; Get low byte of compare start
             bcc cerror          ; ,,
-            sta X_PC            ; ,,
+            sta C_PT            ; ,,
             lda #$00            ; Reset status and counter
             sta STATUS          ; ,,
             sta COUNT           ; ,,
@@ -1969,9 +2004,9 @@ compare:    lda EFADDR+1        ; Is the effective address in
 done:       jsr Toggle          ; Toggle to show the right color
             jsr EndLine         ; Show the last result count
             rts                 ; Done!
-in_range:   ldx #$00            ; Compare EA to PC
+in_range:   ldx #$00            ; Compare EA to CP
             lda (EFADDR,x)      ; ,,
-            cmp (X_PC,x)        ; ,,
+            cmp (C_PT,x)        ; ,,
             bne differs
 matches:    lda STATUS          ; If the byte matches, and the previous byte
             beq show_last       ;   differed, then toggle the status and reset
@@ -1988,7 +2023,7 @@ show_last:  jsr Toggle
 cnext:      inc COUNT           ; Increment the count of match/unmatch
             bne inc_mem         ; ,,
             inc COUNT+1         ; ,,
-inc_mem:    jsr IncPC           ; Increment the comparison counters
+inc_mem:    jsr IncCP           ; Increment the comparison counters
             jsr IncAddr         ; ,,
             jsr $ffe1           ; Check STOP key
             beq done            ; End the comparison if STOP
@@ -2010,7 +2045,7 @@ StartLine:  jsr ResetOut
             jsr ShowAddr
             lda #","
             jsr CharOut
-            jsr ShowPC
+            jsr ShowCP
             lda #":"
             jsr CharOut
             rts
@@ -2224,10 +2259,10 @@ IncAddr:    ldx #$00
             inc EFADDR+1
 next_r:     rts
 
-; Incremenet Persistent Counter
-IncPC:      inc X_PC 
+; Incremenet Command Pointer
+IncCP:      inc C_PT 
             bne pc_r 
-            inc X_PC+1
+            inc C_PT+1
 pc_r:       rts 
 
 ; Commonly-Used Characters
@@ -2311,11 +2346,11 @@ ShowAddr:   lda EFADDR+1
             lda EFADDR
             jmp Hex 
 
-; Show Persistent Counter
-; 16-bit hex address at persistent counter address          
-ShowPC:     lda X_PC+1
+; Show Command Pointer
+; 16-bit hex address at Command Pointer address          
+ShowCP:     lda C_PT+1
             jsr Hex
-            lda X_PC
+            lda C_PT
             jmp Hex
             
 ; Show 8-bit Parameter           
@@ -2332,10 +2367,40 @@ Param_16:   jsr HexPrefix
             pla
             jmp Hex
 
+; Interpolate Variable
+; Replace 'V with hex(V)            
+InterpVar:  lda TOOL_CHR        ; If the interpolation is in the Assemble
+            cmp #T_ASM          ;   tool, as an operand, add the $ in
+            bne get_var         ;   front of the hex digits.
+            lda IDX_IN          ;   If the target address is being inter-
+            cmp #4              ;   polated, then don't add the $
+            bcc get_var         ;   ,,
+            lda #"$"            ;   ,,
+            jsr AddInput        ;   ,,
+get_var:    jsr CHRGET          ; Get single-letter variable name
+            sta $45             ; Set variable name
+            lda #0              ; ,,
+            sta $46             ; ,,
+            jsr FNDVAR          ; Find variable
+            lda $47             ; Move found variable to FAC
+            ldy $48             ; ,,
+            jsr LODFAC          ; ,,
+            jsr MAKADR          ; Convert floating point to address
+            jsr ResetOut        ; Use output buffer for hex conversion
+            lda $15
+            beq int_low
+            jsr Hex
+            jsr CopyOp
+            jsr ResetOut
+int_low:    lda $14
+            jsr Hex
+            jsr CopyOp
+            jmp Transcribe            
+
 ; Expand External Program Counter
-; Replace asterisk with the X_PC
-ExpandXPC:  jsr ResetOut
-            jsr ShowPC
+; Replace asterisk with the C_PT
+ExpandCP:   jsr ResetOut
+            jsr ShowCP
             ldy #$00
 -loop:      lda OUTBUFFER,y
             jsr AddInput
@@ -2353,9 +2418,16 @@ Transcribe: lda #0              ; Clear the high or low byte modifier
 post_mx:    jsr CHRGET          ; Get character from input buffer
             cmp #$00            ; If it's 0, then quit transcribing and return
             beq xscribe_r       ; ,,
-            cmp #$ac            ; Replace an asterisk with the persistent
-            beq ExpandXPC       ;   counter
-            cmp #";"            ; If it's a comment, then quit transcribing
+            cmp #$ac            ; Replace an asterisk with the Command
+            bne ch_interp       ;   Pointer
+            jmp ExpandCP        ;   ,,
+ch_interp:  cmp #"'"            ; Replace a variable name with a hex value
+            bne ch_comment      ; ,,
+            ldy $83             ;   (If currently in quote mode, just add the
+            cpy #$06            ;     apostrophe without interpolating
+            beq x_add           ;     a variable)
+            jmp InterpVar       ; ,,
+ch_comment: cmp #";"            ; If it's a comment, then quit transcribing
             beq comment         ;   unless we're in quote mode
             cmp #HIGH_BYTE      ; If it's > or <, it modifies the next label
             bne ch_low          ; ,,
@@ -2402,7 +2474,7 @@ get_label:  jsr IsDefined
             bne go_expand
             lda IDX_IN          ; The symbol has not yet been defined; parse
             pha                 ;   the first hex numbers to set the program
-            jsr RefreshPC       ;   counter, then return the input index to
+            jsr RefreshEA       ;   counter, then return the input index to
             pla                 ;   its original position
             sta IDX_IN          ;   ,,
             jsr AddFwdRec       ; Add forward reference record for label Y
@@ -2488,17 +2560,18 @@ print_r:    rts
 ; advanced
 Prompt:     txa                 ; Based on the incoming X register, advance
             clc                 ;   the effecive address and store in the
-            adc EFADDR          ;   persistent counter. This is how wAx
-            sta X_PC            ;   remembers where it was
+            adc EFADDR          ;   Command Pointer. This is how wAx
+            sta C_PT            ;   remembers where it was
             lda #$00            ;   ,,
             adc EFADDR+1        ;   ,,
-            sta X_PC+1          ;   ,,
+            sta C_PT+1          ;   ,,
+            jsr CPtoBASIC       ;   Set the CP variable in BASIC
             jsr ResetOut        ; Reset the output buffer to generate the prompt
             jsr wAxPrompt       ; The prompt begins with the wedge character
             lda #T_ASM          ;   Followed by the assembler tool character
             jsr CharOut         ;   ,,
             jsr Space           ;   Followed by a space
-            jsr ShowPC          ; Show persistent counter
+            jsr ShowCP          ; Show Command Pointer
             lda TOOL_CHR        ; Check the tool character
             cmp #T_ASM          ; If it's assembler, then add a space
             bne crsr_over       ; ,,
@@ -2531,13 +2604,13 @@ ToolTable:	.byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
-            .byte <SetPC-1,<BASICStage-1,<PlugIn-1,<List-1,
+            .byte <SetCP-1,<BASICStage-1,<PlugIn-1,<List-1,
             .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
             .byte <Help-1,<PlugMenu-1,<Labels-1
 ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
-            .byte >SetPC-1,>BASICStage-1,>PlugIn-1,>List-1
+            .byte >SetCP-1,>BASICStage-1,>PlugIn-1,>List-1
             .byte >Assemble-1,>Register-1,>Directory-1,>List-1,>Compare-1
             .byte >Help-1,>PlugMenu-1,>Labels-1
 
@@ -2594,10 +2667,10 @@ HelpScr1:   .asc LF,LF," *** WAX COMMANDS ***",LF,LF
             .asc "R MEMORY   I TEXT",LF
             .asc "% BINARY   = ASSERT",LF
             .asc "T TRANSFER C COMPARE",LF,$00
-HelpScr2:   .asc "@ LABELS   * SET PC",LF
+HelpScr2:   .asc "@ LABELS   * SET CP",LF
             .asc "L LOAD     S SAVE",LF
             .asc "F FILES    ",$5e," STAGE",LF
-            .asc "# DEC2HEX  $ HEX2DEC",LF
+            .asc "$ HEX2DEC  # DEC2HEX",LF
             .asc "U PLUG-IN  ",$5c," USR LIST",LF
             .asc "P MENU     X EXIT",LF,$00
 
@@ -2606,6 +2679,9 @@ AsmErrMsg:  .asc "ASSEMBL",$d9
 LabErrMsg:  .asc "SYMBO",$cc
 ResErrMsg:  .asc "CAN",$27,"T RESOLV",$c5
 RBErrMsg:   .asc "TOO FA",$d2
+
+; FAC for 65536
+F65536:     .byte $91,$00,$00,$00,$00
 
 ; Instruction Set
 ; This table contains two types of one-word records--mnemonic records and
@@ -2985,7 +3061,7 @@ BASIC       = $024b             ; BASIC program
 uwAxfer:    bcc ch_pk           ; If no address is provided, check for T
             lda #2              ; Set header as though the header has already
             sta HEADER          ;   been read
-            jsr EAtoPC          ; Program counter will be start of memory
+            jsr EAtoCP          ; Program counter will be start of memory
             lsr TERMMODE        ; Set PRG mode
             jmp setup           ; Continue to hardware setup
 ch_pk:      lda #0              ; Header byte count clear
@@ -3043,7 +3119,7 @@ is_data:    jsr ResetOut        ; Show final locations...
             jsr wAxPrompt       ;    wAx prompt
             lda #T_DIS          ;    Disassemble tool
             jsr CharOut         ;    ,,
-            jsr ShowPC          ;    Starting address
+            jsr ShowCP          ;    Starting address
             jsr Space           ;      to
             jsr ShowAddr        ;    Ending address
             jsr PrintBuff       ; ,,
@@ -3070,7 +3146,7 @@ recv:       lda UPORT           ; Get the User Port byte
             cpx #2              ; If both header bytes have been received,
             beq prg             ;   handle PRG data
             sta EFADDR,x        ; Otherwise, store header bytes in effective
-            sta X_PC,x          ;   address and persistent counter
+            sta C_PT,x          ;   address and Command Pointer
             inc HEADER          ; Advance header
             bne ser_r           ; Return from interrupt
 prg:        ldx #0              ; Store PRG data byte in current location
@@ -3100,7 +3176,7 @@ ser_r:      jmp RFI             ; Return from the User Port interrupt
 ; Relocate Workspace
 SRC_END     = $0247             ; End of source range (2 bytes)
 DEST_END    = $0249             ; End of destination range (2 bytes)
-OFFSET      = $024b             ; Offset (X_PC - EFADDR, 2 bytes)
+OFFSET      = $024b             ; Offset (C_PT - EFADDR, 2 bytes)
 -OPERAND    = $024d             ; Instruction operand (2 bytes)           
 
             ; Parameter collection
@@ -3114,14 +3190,14 @@ okay:       jsr Buff2Byte       ; Get high byte of source end
             sta SRC_END         ; ,,
             jsr Buff2Byte       ; Get high byte of destination start
             bcc error           ; ,,
-            sta X_PC+1          ; ,,
+            sta C_PT+1          ; ,,
             jsr Buff2Byte       ; Get low byte of destination start
             bcc error           ; ,,
-            sta X_PC            ; ,,
-            sec                 ; Calculate default offset (X_PC - EFADDR)
+            sta C_PT            ; ,,
+            sec                 ; Calculate default offset (C_PT - EFADDR)
             sbc EFADDR          ;   This is initially used to calculate an
             sta OFFSET          ;   end-of-destination address, but both end-of-
-            lda X_PC+1          ;   destination and offset can be overridden by
+            lda C_PT+1          ;   destination and offset can be overridden by
             sbc EFADDR+1        ;   additional optional 16-bit parameters.
             sta OFFSET+1        ;   ,,
             lda OFFSET          ; Calculate default end-of-destination 
@@ -3147,7 +3223,7 @@ okay:       jsr Buff2Byte       ; Get high byte of source end
             
             ; Relocation process
 Relocate:   ldy #$00            ; Load instruction opcode
-            lda (X_PC),y        ; ,,
+            lda (C_PT),y        ; ,,
             ldx #$03            ; Determine instruction length
             cmp #$20            ;    JSR is a special case, then various bit
             beq three           ;    patterns are tested
@@ -3163,11 +3239,11 @@ one:        dex                 ;    Instruction is 1 byte
 two:        dex                 ;    Instruction is 2 bytes
             bpl rnext           ; 1/2 bytes - Always advance to next instruction
 three:      iny                 ; 3 bytes - Something to potentially update.
-            lda (X_PC),y        ;   Grab the operand from the two bytes after
+            lda (C_PT),y        ;   Grab the operand from the two bytes after
             sta OPERAND         ;   the opcode...
             cmp EFADDR          ;   ,,            
             iny                 ;   ,,
-            lda (X_PC),y        ;   ,,
+            lda (C_PT),y        ;   ,,
             sta OPERAND+1       ;   ,,
             sbc EFADDR+1        ; ...then check whether the range of the operand
             bcc rnext           ;   is within the original code range
@@ -3179,25 +3255,25 @@ three:      iny                 ; 3 bytes - Something to potentially update.
             dey                 ;   ,,
             lda OPERAND         ; If the operand is within this code range,
             adc OFFSET          ;   add the offset and copy it
-            sta (X_PC),y        ;   ,,
+            sta (C_PT),y        ;   ,,
             iny                 ;   ,,
             lda OPERAND+1       ;   ,,
             adc OFFSET+1        ;   ,,
-            sta (X_PC),y        ;   ,,
+            sta (C_PT),y        ;   ,,
             jsr ResetOut        ; Show list of changed addresses
             lda #'.'            ; ,,
             jsr CharOut         ; ,,
-            jsr ShowPC          ; ,,
+            jsr ShowCP          ; ,,
             jsr PrintBuff       ; ,,
-            ldx #$03            ; ,, (reset X back to 3 for incrementing X_PC)
+            ldx #$03            ; ,, (reset X back to 3 for incrementing C_PT)
 rnext:      txa                 ; Add X (instruction size) to the source pointer
             clc                 ; ,,
-            adc X_PC            ; ,,
-            sta X_PC            ; ,,
+            adc C_PT            ; ,,
+            sta C_PT            ; ,,
             bcc rcheck_end      ; ,,
-            inc X_PC+1          ; ,,
+            inc C_PT+1          ; ,,
 rcheck_end: cmp DEST_END        ; Have we reached the end of the range?
-            lda X_PC+1          ; ,,
+            lda C_PT+1          ; ,,
             sbc DEST_END+1      ; ,,
             bcc Relocate        ; Get next instruction in the code
             rts
@@ -3331,10 +3407,10 @@ uML2BAS:    bcc merror          ; Error if the first address is no good
 set_mod:    sta MODIFIER
             lda #$00            ; Initialize fail point high byte
             sta FAIL_POINT+1    ; ,,
-            lda $2b             ; Set persistent counter with start of
-            sta X_PC            ;   BASIC
+            lda $2b             ; Set Command Pointer with start of
+            sta C_PT            ;   BASIC
             lda $2c             ;   ,,
-            sta X_PC+1          ;   ,,
+            sta C_PT+1          ;   ,,
             lda #$64            ; Start at line 100 by default
             sta LINE_NUM        ; ,,
             lda #$00            ; ,,
@@ -3343,9 +3419,9 @@ set_mod:    sta MODIFIER
             bcc found_end       ; If no existing program,
             jsr FindEnd         ; Find the last line number
             jsr IncLine         ; Increment it by 5
-            lda X_PC            ; Set fail point, which preserves the existing
+            lda C_PT            ; Set fail point, which preserves the existing
             sta FAIL_POINT      ;   BASIC program if the ML2BAS process results
-            lda X_PC+1          ;   in an out of memory condition.
+            lda C_PT+1          ;   in an out of memory condition.
             sta FAIL_POINT+1    ;   ,,
 found_end:  lda MODIFIER        ; If the code is not relocatable, skip the
             beq mStart          ;   PC setting up front
@@ -3364,7 +3440,7 @@ merror:     jmp $cf08           ; ?SYNTAX ERROR, warm start
 mStart:     jsr mChRange
             bcc range_ok
 mdone:      jsr mEnd            ; Add $00,$00 to the the program
-            jsr Rechain         ; Rechain BASIC program 
+            jsr Rechain         ; Rechain BASIC program
             jmp ($c002)         ; READY.
 range_ok:   jsr LinkBytes
             jsr LineNumber
@@ -3447,12 +3523,12 @@ IncLine:    lda #$05            ; Increment the line number by 5
 ; Add the byte in Accumulator to the BASIC line            
 AddByte:    pha
             ldx #$00
-            sta (X_PC,x)
-            jsr IncPC
-            lda X_PC+1          ; Check memory for end of BASIC
+            sta (C_PT,x)
+            jsr IncCP
+            lda C_PT+1          ; Check memory for end of BASIC
             cmp $34             ; ,,
             bcc ok              ; ,,
-            lda X_PC            ; ,,
+            lda C_PT            ; ,,
             cmp $33             ; ,,
             bcs OutOfMem        ; If at limit of memory, then ERROR
 ok:         pla
@@ -3503,22 +3579,22 @@ FindEnd:    jsr NextLink        ; Get the next BASIC line location
             bcs get_line        ; If a line was found, advance line number and
             rts                 ;   link pointer and try again; else, return
 get_line:   iny                 ; Get the line number and update it
-            lda (X_PC),y        ;   it      
+            lda (C_PT),y        ;   it      
             sta LINE_NUM        ;   ,,
             iny                 ;   ,,
-            lda (X_PC),y        ;   ,,
+            lda (C_PT),y        ;   ,,
             sta LINE_NUM+1      ;   ,,
-            lda $07             ; Get the next link pointer and update X_PC
-            sta X_PC            ;   ,,
+            lda $07             ; Get the next link pointer and update C_PT
+            sta C_PT            ;   ,,
             lda $08             ;   ,,
-            sta X_PC+1          ; Keep looking for the end
+            sta C_PT+1          ; Keep looking for the end
             jmp FindEnd
 
 NextLink:   ldy #$00            ; Set locations $07 and $08 to the next
-            lda (X_PC),y        ; BASIC line pointer. If both are $00, then
+            lda (C_PT),y        ; BASIC line pointer. If both are $00, then
             sta $07             ; we're at the end of the BASIC program,
             iny                 ; otherwise, the BASIC program continues
-            lda (X_PC),y        ; at the specified address
+            lda (C_PT),y        ; at the specified address
             sta $08             ; ,,
             sec                 ; Set Carry if the link isn't $00/$00
             lda $07             ; ,,
@@ -3550,7 +3626,7 @@ CheckRel:   ldx #$00            ; Check the instruction at the effective address
             rts                 ;   instruction was handled   
 
 ; Check Range
-; Check to see if X_PC is greater than or equal to Range End  
+; Check to see if C_PT is greater than or equal to Range End  
 ; In range is Carry is clear; out of range if Carry is set    
 mChRange:   lda RANGE_END+1
             cmp EFADDR+1
@@ -3689,7 +3765,7 @@ ch_cmd:     cmp #5              ; Minus - Octave Down
             sta (EFADDR,x)      ; ,,
             jsr ShowData        ; ,,
             jsr IncAddr         ; Increment effective address
-            jmp EAtoPC          ; Update the persistent counter and exit
+            jmp EAtoCP          ; Update the Command Pointer and exit
 ; Add an effect placeholder or effect command        
 effect:     lda #$0f            ; Enter an effect placeholder into memory
             .byte $3c           ; TOP (skip word)
@@ -3728,7 +3804,7 @@ add_note:   ora DURATION
             lda #$00            ; Turn off the voice
             sta VOICE           ; ,,
             jsr IncAddr         ; Increment the address
-            jsr EAtoPC          ; Update the persistent counter and go back
+            jsr EAtoCP          ; Update the Command Pointer and go back
             jmp loop
 
 ; Simple wAxScore player
@@ -3737,7 +3813,7 @@ Player:     lsr RECORD          ; Turn off recording flag
             jsr PlayNote        ; Play it
             php
             jsr IncAddr         ; Increment the address
-            jsr EAtoPC          ;   ,,
+            jsr EAtoCP          ;   ,,
             plp
             bcc player_r        ; If end-of-score marker, then end
             lda $c5             ; Check STOP key
@@ -3761,7 +3837,7 @@ show_prev:  jsr ResetOut        ; Show the previous address to verify undo
             jsr CharOut         ;   ,,
             jsr ShowAddr        ;   ,,
             jsr PrintBuff       ;   ,,
-            jsr EAtoPC
+            jsr EAtoCP
             jmp loop                       
  
 ; Get Key
@@ -3811,7 +3887,7 @@ Delay:      ldy $c5
             lda #$00            ; Turn off the voice
             sta VOICE           ; ,,
             jsr IncAddr         ; Increment the address
-            jsr EAtoPC          ; Update the persistent counter
+            jsr EAtoCP          ; Update the Command Pointer
             pla                 ; Get back the last key pressed, and process
             jmp proc_key        ;   new key as a command
 ch_time:    cmp TIMER
