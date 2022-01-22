@@ -48,7 +48,7 @@ MAX_LAB     = 19                ; Maximum number of user labels + 1
 MAX_FWD     = 12                ; Maximum number of forward references
 
 ; Tool Setup
-TOOL_COUNT  = $1b               ; How many tools are there?
+TOOL_COUNT  = $1c               ; How many tools are there?
 WEDGE       = "."               ; The wedge character
 T_DIS       = "D"               ; Tool character D for disassembly
 T_XDI       = "E"               ; Tool character E for extended opcodes
@@ -233,19 +233,35 @@ jPrintStr:  jmp PrintStr        ; a029
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-Install:    jsr Rechain         ; Rechain BASIC program
+Install:    jsr has_exp         ; Determine whether to introduce this software
+            beq nonwAxpand      ;   as wAxpander, based on RAM in Block 3
+            lda #<wAxpander     ;   ,,
+            ldy #>wAxpander     ;   ,,
+            jsr PrintStr        ;   ,,
+nonwAxpand: lda #<Intro         ; Print introduction message
+            ldy #>Intro         ; ,,
+            jsr PrintStr        ; ,,
+            jsr Rechain         ; Rechain BASIC program
             jsr SetupVec        ; Set up vectors (IGONE and BRK)
             lda #DEF_DEVICE     ; Set default device number
             sta DEVICE          ; ,,
-            lda #<PlugMenu      ; Set default plug-in (to Install)
-            sta USER_VECT       ; ,,
-            lda #>PlugMenu      ; ,,
-            sta USER_VECT+1     ; ,,
-            lda #<Intro         ; Print introduction message
-            ldy #>Intro         ; ,,
-            jsr PrintStr        ; ,,
+            ldx #<PlugMenu      ; If this is not a wAxpander, the default user
+            ldy #>PlugMenu      ;   tool is the Relocator
+            jsr has_exp         ;   ,,
+            beq defmenu         ;   ,,
+            ldx #<uConfig       ; If this is a wAxpander, the default user tool
+            ldy #>uConfig       ;   is MEM CONFIG
+defmenu:    stx USER_VECT       ;   ,,
+            sty USER_VECT+1     ;   ,,
             jmp (READY)         ; Warm start with READY prompt
-
+has_exp:    lda $2000           ; Test lowest byte of Block 1 RAM to
+            inc $2000           ;   determine whether this software should
+            cmp $2000           ;   introduce itself as "WAXPANDER"
+            php                 ;   ,,
+            dec $2000           ;   ,,
+            plp                 ;   ,,
+            rts
+            
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; MAIN PROGRAM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;              
@@ -308,7 +324,7 @@ RefreshEA:  jsr ResetIn         ; Re-initialize for buffer read
             bcc main_r          ; Fail if the byte couldn't be parsed
             sta EFADDR          ; Save to the EFADDR low byte
 main_r:     rts                 ; Pull address-1 off stack and go there
-    
+   
 ; Return from Wedge
 ; Return in one of two ways--
 ; (1) In direct mode, to a BASIC warm start without READY.
@@ -330,6 +346,20 @@ in_program: lda #$00            ; In a program, reset the keyboard buffer size
 ; COMMON LIST COMPONENT
 ; Shared entry point for Disassembler and Memory Dump
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Handle Starting DEF
+; As a special case, in which the user enters something like
+;     .DEF00
+; DEF is tokenized by BASIC, and wAx's detokenization doesn't start until
+; Transcribe, where other instances of DEF are detokenized. So this handles that
+DEF:        lda #T_DIS          ; Change the tool from $96 (DEF TOKEN)
+            sta TOOL_CHR        ;   to Disassemble
+            lda #$ef            ; Set the high byte to $EF
+            sta EFADDR+1        ; ,,
+            jsr ResetIn         ; Technically, the low byte of the start is the
+            jsr Buff2Byte       ;   first byte on the command line.
+            sta EFADDR          ;   ,,
+            ; Fall through to List
+
 List:       bcc list_cont       ; If no start address, continue list at EFADDR
             lda #$ff            ; Default range to top of memory
             sta RANGE_END       ; ,,
@@ -584,10 +614,18 @@ edit_r:     rts
 ; quote, or 0
 TextEdit:   ldy #$00            ; Y=Data Index
 -loop:      jsr CharGet
-            beq asm_error       ; Return to MemEditor if 0
-            cmp #QUOTE          ; Is this the closing quote?
-            beq edit_exit       ; Return to MemEditor if quote
-            sta (EFADDR),y      ; Populate data
+            beq edit_exit       ; Return to MemEditor if 0
+            cmp #QUOTE          ; Is the character a quotation mark? 
+            bne non_quote       ; ,,
+            jsr CharGet         ; If so, check the next charater
+            cmp #0              ; If that's the end, treat the last quote mark 
+            beq edit_exit       ;   as a string delimiter
+            dec IDX_IN          ; If anything is next, back up the index and add
+            lda #QUOTE          ;   a real quotation mark
+non_quote:  cmp #$99            ; The PRINT token is converted to ?
+            bne non_qm
+            lda #"?"
+non_qm:     sta (EFADDR),y      ; Populate data
             iny
             cpy #$10            ; String size limit
             beq edit_exit
@@ -615,12 +653,13 @@ asm_error:  jmp AsmError
 Assemble:   bcc asm_r           ; Bail if the address is no good
             lda INBUFFER+4      ; If the user just pressed Return at the prompt,
             beq asm_r           ;   go back to BASIC
+post_text:
 -loop:      jsr CharGet         ; Look through the buffer for either
             beq test            ;   0, which should indicate implied mode, or:
             ldy IDX_IN          ; If we've gone past the first character after
             cpy #$05            ;   the address, no longer pay attention to
             bne op_parts        ;   pre-data stuff
-            cmp #LABEL          ; - = New label
+            cmp #LABEL          ; @ = New label
             beq DefLabel        ; ,,
             cmp #":"            ; Colon = Byte entry (route to hex editor)
             beq MemEditor       ; ,,
@@ -1310,11 +1349,13 @@ srch_r:     rts
 ; address matches the input, indicate the starting address of the match.
 CodeSearch: lda #T_DIS
             jsr CharOut
+            jsr Space
             jsr ShowAddr
             jsr Semicolon       ; Adds comment so the disassembly works
             jsr Disasm          ; Disassmble the code at the effective address
-            jsr IsMatch         ; If it matches the input, show the address
-            bcc check_end       ; ,,
+            ldx #7              ; Change output offset for space, and enter
+            jsr IsMatch+2       ;   IsMatch after its LDX. If there's a match,
+            bcc check_end       ;   show the code
             lda #WEDGE          ; Show prompt if there's a match
             jsr CHROUT          ; ,,
             jsr PrintBuff       ; Print address and disassembly   
@@ -1959,9 +2000,8 @@ tadd_char:  jsr CharOut         ; ,,
             iny
             cpy #$0c
             bne loop
-            lda #$22
-            jsr CharOut
-            rts 
+            lda #QUOTE
+            jmp CharOut
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; COMPARE COMPONENTS
@@ -2120,7 +2160,7 @@ cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
 -loop:      ldx #0              ; Get character at screen position
             lda ($d1,x)         ; ,,
             cmp #WEDGE          ; Is it a . character?
-            bne show_use:       ; If not, done positioning cursor, show usage
+            bne show_use        ; If not, done positioning cursor, show usage
             lda #$11            ; Drop down one line
             jsr $ffd2           ; ,,
             jmp loop            ; And look again
@@ -2204,8 +2244,8 @@ CharGet:    ldx IDX_IN
 ; Is Buffer Match            
 ; Does the input buffer match the output buffer?
 ; Carry is set if there's a match, clear if not
-IsMatch:    ldy #6              ; Offset for input after address
-            ldx #6              ; Offset for output after address
+IsMatch:    ldx #6              ; Offset for output after address
+            ldy #6              ; Offset for input after address
 -loop:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
             cmp #$01            ;   But ignore #$01
             beq match_ok        ;   ,,
@@ -2600,29 +2640,29 @@ DirectMode: ldy CURLIN+1
 ; ToolTable contains the list of tools and addresses for each tool
 ToolTable:	.byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
             .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR,T_USL
-            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,LABEL
+            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,LABEL,$96
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
             .byte <SetCP-1,<BASICStage-1,<PlugIn-1,<List-1,
             .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
-            .byte <Help-1,<PlugMenu-1,<Labels-1
+            .byte <Help-1,<PlugMenu-1,<Labels-1,<DEF-1
 ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
             .byte >SetCP-1,>BASICStage-1,>PlugIn-1,>List-1
             .byte >Assemble-1,>Register-1,>Directory-1,>List-1,>Compare-1
-            .byte >Help-1,>PlugMenu-1,>Labels-1
+            .byte >Help-1,>PlugMenu-1,>Labels-1,>DEF-1
 
 ; Plug-In Menu Data           
-MenuText:   .asc LF," *** PLUG-IN MENU ***",LF,LF
-            .asc ".P WAXFER",$0d
+MenuText:   .asc LF,"**** PLUG-IN MENU ****",LF
+            .asc ".P MEM CONFIG",$0d
             .asc ".P RELOCATE",$0d
             .asc ".P DEBUG",$0d
             .asc ".P ML TO BASIC",$0d
             .asc ".P CHAR HELPER",$0d
             .asc ".P MUSIC",$0d
-            .asc ".P MEM CONFIG",$0d
+            .asc ".P WAXFER",$0d
             .asc 0
             
 MenuChar1:  .asc "W","R","D","M","C","M","M"
@@ -2654,13 +2694,13 @@ ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
 ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
-Intro:      .asc LF,"  *** WAXPANDER ***"
-            .asc LF,"  BEIGEMAZE.COM/WAX",LF
-            .asc LF,"  ENTER .? FOR HELP",LF,$00
+wAxpander:  .asc LF,"WAXPANDER (WAX+27K)",LF,$00
+Intro:      .asc LF,"BEIGEMAZE.COM/WAX2",LF
+            .asc ".? FOR HELP",LF,$00
 Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0
             .asc "P",$c0,$c0,"S",$c0,$c0,"PC",$c0,$c0,LF,".",";",$00
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc LF,LF," *** WAX COMMANDS ***",LF,LF
+HelpScr1:   .asc LF,LF,"**** WAX COMMANDS ****",LF
             .asc "D 6502 DIS E 6502+EXT",LF
             .asc "A ASSEMBLE R REGISTER",LF
             .asc "G GO       B BRKPOINT",LF
@@ -3994,7 +4034,8 @@ uConfig:    jsr ResetIn
             beq GO3K
             cmp #"2"
             beq GO24K
-            rts
+            ldy #6
+            jmp show_use
 GO0K:       lda #16
             .byte $3c           ; TOP (skip word)
 GO3K:       lda #4
@@ -4002,5 +4043,21 @@ GO3K:       lda #4
             lda #30
             sta $0284
             sta $0288
-            jmp $fd32           ; Soft reset
-GO24K:      jmp $fd22           ; Hard reset
+soft_reset:	jsr	$fd52		    ; restore default I/O vectors
+	        jsr	$fdf9   		; initialize I/O registers
+	        jsr	$e518		    ; initialise hardware
+	        cli				    ; enable interrupts            
+	        jsr	$e45b		    ; Initialise BASIC vector table
+	        jsr	$e3a4		    ; Initialise BASIC RAM locations
+	        jsr	$e404		    ; Print start up message and initialise memory pointers
+	        ldx	#$fb			; Value for start stack
+	        txs				    ; Set stack pointer
+	        jsr nonwAxpand      ; Show basic wAx intro
+	        jmp	$c474
+GO24K:      lda #$12
+            sta $0282
+            lda #$80
+            sta $0284
+            lda #$10
+            sta $0288
+            jmp soft_reset
