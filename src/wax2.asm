@@ -2159,9 +2159,6 @@ is_list:    plp                 ; List tool
 ; This is also called from the Plug-In menu, but as ShowUsage+1 to skip PLP,
 ; so be careful if changing the top of this routine.            
 ShowUsage:  plp                 ; Pop what was pushed in the main part
-            lda #<UsageTxt      ; Show the "USAGE: .U" instruction
-            ldy #>UsageTxt      ; ,,
-            jsr PrintStr        ; ,,
             lda USER_VECT       ; Add 4 to the user vector for the usage
             ldy USER_VECT+1     ;   text
             clc                 ;   ,,
@@ -2228,7 +2225,8 @@ ShowMenu:   lda #<AddressTxt    ; Before showing the menu, show the current
             jmp show_type       ;   ,,
 list_plug:  lda #<ListTxt       ;   ,,
             ldy #>ListTxt       ;   ,,
-show_type:  jsr PrintStr        ;   ,,                  
+show_type:  jsr PrintStr        ;   ,,   
+            jsr ShowUsage+1     ; Show the usage template
             lda #<MenuText      ; The string wasn't found, so show menu
             ldy #>MenuText      ; ,,
             jmp PrintStr        ; ,,
@@ -2753,8 +2751,8 @@ MenuText:   .asc LF,LF,"**** PLUG-IN MENU ****",LF
             .asc ".P ",QUOTE,"WAXFER",QUOTE,LF
             .asc $00
 AddressTxt: .asc LF,"ADDR: $",$00
-NormalTxt:  .asc "TYPE: NORMAL",$00
-ListTxt:    .asc "TYPE: LIST",$00
+NormalTxt:  .asc "TYPE: NORMAL",LF,$00
+ListTxt:    .asc "TYPE: LIST",LF,$00
             
 MenuChar1:  .asc "W","R","D","M","C","M","M"
 MenuChar2:  .asc "A","E","E","L","H","U","E"
@@ -2762,11 +2760,6 @@ MenuLoc_L:  .byte <uwAxfer,<uRelocate,<uDebug,<uML2BAS
             .byte <uChar,<uwAxScore,<uConfig
 MenuLoc_H:  .byte >uwAxfer,>uRelocate,>uDebug,>uML2BAS
             .byte >uChar,>uwAxScore,>uConfig
-
-; Built-In plug-in instructions
-; Right padding is included to make it look prtty if the menu is used
-; multiple times in the same place
-UsageTxt:   .asc LF," USAGE:",LF,".U ",$00          
 
 ; Addresses for error message text
 ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
@@ -2792,7 +2785,7 @@ HelpScr2:   .asc "@ LABELS   * SET CP",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
             .asc "X EXIT",LF,LF
             .asc "    USER PLUG-INS:",LF
-            .asc "U RUN      P MANAGE",LF,$00
+            .asc "U INVOKE   P INSTALL",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
@@ -3179,7 +3172,7 @@ RUNNING     = $024a             ; Running
 BASIC       = $024b             ; BASIC program
 
 uwAxfer:    jmp ph_waxfer
-            .asc $00,"[B/T][ADDR]       ",$00
+            .asc $00,".U [B/T][ADDR]       ",$00
 ph_waxfer:  bcc ch_pk           ; If no address is provided, check for T
             lda #2              ; Set header as though the header has already
             sta HEADER          ;   been read
@@ -3303,7 +3296,7 @@ OFFSET      = $024b             ; Offset (C_PT - EFADDR, 2 bytes)
 
             ; Parameter collection
 uRelocate:  jmp ph_reloc
-            .asc $00,"FROM TO TARGET    ",$00
+            .asc $00,".U FROM TO TARGET    ",$00
 ph_reloc:   bcs okay            ; Error if invalid first argument (source start)
 error:      jmp $cf08           ; ?SYNTAX ERROR, warm start
 okay:       jsr Buff2Byte       ; Get high byte of source end
@@ -3405,7 +3398,7 @@ KNAPSIZE    = BREAKPT+2         ; Knapsack size (1 byte)
 ; * If setting a breakpoint, its address is in EFADDR vector
 ; * If clearing a breakpoint, the Carry flag is clear
 uDebug:     jmp ph_debug
-            .asc $00,"ADDR              ",$00 
+            .asc $00,".U ADDR              ",$00 
 ph_debug:   bcs NewKnap         ; A legal address has been provided in $a6/$a7
 restore:    lda BREAKPT         ; Otherwise, restore the breakpoint to the
             sta EFADDR          ;   original code by copying the
@@ -3504,7 +3497,7 @@ MODIFIER    = $0249             ; Relocate or absolute
 FAIL_POINT  = $024a             ; BASIC program end restore point (2 bytes)
 
 uML2BAS:    jmp ph_ml2bas
-            .asc $00,"FROM TO+1 [R/H/T] ",$00
+            .asc $00,".U FROM TO+1 [R/H/T] ",$00
 ph_ml2bas:  bcc merror          ; Error if the first address is no good
             jsr Buff2Byte       ; Get high byte of range end
             bcc merror          ; ,,
@@ -3762,7 +3755,7 @@ min_range:  clc
 CURBYTE     = $0247             ; Current byte value
 
 uChar:      jmp ph_char
-            .asc $00,"[ADDR]            ",$00
+            .asc $00,".U [ADDR]            ",$00
 ph_char:    bcc Canvas
             lda #$00
             sta $07
@@ -3832,7 +3825,7 @@ QUARTER     = $20               ; Quarter note
 EIGHTH      = $10               ; Eighth note
 
 uwAxScore:  jmp ph_waxsc
-            .asc $00,"ADDR [R]          ",$00
+            .asc $00,".U ADDR [R]          ",$00
 ph_waxsc    bcs maddr_ok        ; Bail if no valid address was provided
             rts                 ; ,,
 maddr_ok:   lda #$08            ; Set volume
@@ -4107,7 +4100,7 @@ Oct1:       .byte 0,194,197,201,204,207,209,212,214,217,219,221,223,225
 ; MEMORY CONFIG
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 uConfig:    jmp ph_conf
-            .asc $00,"0K/3K/24K         ",$00
+            .asc $00,".U 0K/3K/24K         ",$00
 ph_conf:    jsr ResetIn
             jsr CharGet
             cmp #"0"
