@@ -225,6 +225,8 @@ jShowCP:    jmp ShowCP          ; a024
 jEAtoCP:    jmp EAtoCP          ; a027
 jPrintStr:  jmp PrintStr        ; a02a
 jNextList:  jmp NextList        ; a02d
+jDirectMode:jmp DirectMode      ; a030
+jSizeOf:    jmp SizeOf          ; a033
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -2143,15 +2145,42 @@ Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
 ; https://github.com/Chysn/wAx/wiki/User-Plug-In
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 PlugIn:     php                 ; Push processor status, used by most tools
-            ldx #0              ; If the user plug-in's code begins with NOP,
-            lda (USER_VECT,x)   ;   then the plug-in will use the List tool
-            cmp #$ea            ;   to format its output. Otherwise, it will be
-            beq is_list         ;   run as a normal tool
+            lda INBUFFER        ; If the first character is P, then the user
+            cmp #"P"            ;   is asking for the usage text
+            beq ShowUsage       ;   ,,
+            jsr PlugType        ; Determine the plug-in type
+            bmi is_list         ; ,,
             plp                 ; Normal tool
             jmp (USER_VECT)     ; ,,
 is_list:    plp                 ; List tool
-            jsr List            ; ,,
-            rts
+            jmp List            ; ,,
+            
+; Show Usage for Plug-In
+; This is also called from the Plug-In menu, but as ShowUsage+1 to skip PLP,
+; so be careful if changing the top of this routine.            
+ShowUsage:  plp                 ; Pop what was pushed in the main part
+            lda #<UsageTxt      ; Show the "USAGE: .U" instruction
+            ldy #>UsageTxt      ; ,,
+            jsr PrintStr        ; ,,
+            lda USER_VECT       ; Add 4 to the user vector for the usage
+            ldy USER_VECT+1     ;   text
+            clc                 ;   ,,
+            adc #4              ;   ,,
+            bcc show_pr         ;   ,,
+            iny                 ;   ,,
+show_pr:    jsr PrintStr        ;   ,,
+            lda #LF
+            jmp CHROUT
+                
+; Get Plug-In Type
+; Z = 1 = List
+; Z = 0 = Normal
+;     jsr PlugType
+;     bmi list_type
+;     bpl normal_type
+PlugType:   ldy #3              ; If the user plug-in's 4th byte is $80,
+            lda (USER_VECT),y   ;   then the plug-in will use the List tool
+            rts                 ;   to format its output. Otherwise, it will be
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; PLUG-IN MENU COMPONENT
@@ -2161,8 +2190,16 @@ CurChar     = $0247
 PlugMenu:   jsr ResetIn         ; Reset in to get just a single hex byte
             jsr CharGet         ; If the next character is ", then install by
             cmp #QUOTE          ;   name. Otherwise, do an address-based
-            bne user_inst       ;   install
-            jsr CharGet         ; Get the next two characters after the quote
+            beq get_name        ;   install
+            jsr ResetIn         ; Install plug-in by address
+            jsr Buff2Byte       ; ,,
+            bcc ShowMenu        ; ,,
+            sta $06             ; ,,
+            jsr Buff2Byte       ; ,,
+            bcc ShowMenu        ; ,,
+            sta $05             ; ,,
+            jmp ShowUsage+1     ; Show usage, +1 to avoid PLP
+get_name:   jsr CharGet         ; Get the next two characters after the quote
             sta CurChar         ; ,,
             jsr CharGet         ; ,,
             sta CurChar+1       ; ,,
@@ -2175,7 +2212,24 @@ PlugMenu:   jsr ResetIn         ; Reset in to get just a single hex byte
             beq cfound          ; Both match, so the menu item is found
 mnext:      dey                 ; Iterate
             bpl loop            ; ,,
-ShowMenu:   lda #<MenuText      ; The string wasn't found, so show menu
+ShowMenu:   lda #<AddressTxt    ; Before showing the menu, show the current
+            ldy #>AddressTxt    ;   plug-in address
+            jsr PrintStr        ;   ,,
+            jsr ResetOut        ;   ,,
+            lda USER_VECT+1     ;   ,,
+            jsr Hex             ;   ,,
+            lda USER_VECT       ;   ,,
+            jsr Hex             ;   ,,
+            jsr PrintBuff       ;   ,,
+            jsr PlugType        ; Show the type of plug-in for the user's
+            bmi list_plug       ;   convenience
+            lda #<NormalTxt     ;   ,,
+            ldy #>NormalTxt     ;   ,,
+            jmp show_type       ;   ,,
+list_plug:  lda #<ListTxt       ;   ,,
+            ldy #>ListTxt       ;   ,,
+show_type:  jsr PrintStr        ;   ,,                  
+            lda #<MenuText      ; The string wasn't found, so show menu
             ldy #>MenuText      ; ,,
             jmp PrintStr        ; ,,
 cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
@@ -2185,31 +2239,12 @@ cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
 -loop:      ldx #0              ; Get character at screen position
             lda ($d1,x)         ; ,,
             cmp #WEDGE          ; Is it a . character?
-            bne show_use        ; If not, done positioning cursor, show usage
+            bne desc_r          ; If not, done positioning cursor
             lda #$11            ; Drop down one line
             jsr $ffd2           ; ,,
             jmp loop            ; And look again
-show_use:   tya                 ; Show "USAGE"
-            pha                 ; ,, Preserve found plug-in index
-            lda #<UsageTxt      ; ,,
-            ldy #>UsageTxt      ; ,,
-            jsr PrintStr        ; ,,
-            pla                 ; ,,
-            tay                 ; ,,
-            lda UsageLoc_L,y    ; Show usage instructions
-            pha                 ; ,,
-            lda UsageLoc_H,y    ; ,,
-            tay                 ; ,,
-            pla                 ; ,,
-            jmp PrintStr        ; ,,
-user_inst:  jsr ResetIn         ; Install plug-in by address
-            jsr Buff2Byte       ; ,,
-            bcc ShowMenu        ; ,,
-            sta $06             ; ,,
-            jsr Buff2Byte       ; ,,
-            bcc ShowMenu        ; ,,
-            sta $05             ; ,,
-            rts                 ; ,,
+desc_r:     jmp ShowUsage+1     ; Show new tool's usage, but skip the PLP     
+menu_r:     rts
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; SUBROUTINES
@@ -2669,6 +2704,23 @@ prompt_r:   rts
 DirectMode: ldy CURLIN+1
             iny
             rts
+
+; Instruction Size
+; Given 6502 opcode in A, return its size (1-3) in X            
+SizeOf:     ldx #$03            ; Determine instruction length
+            cmp #$20            ;    JSR is a special case, then various bit
+            beq three           ;    patterns are tested
+            bit $c3b9           ;    Test %00001000 from BASIC ROM
+            beq one_or_two      ;    
+            bit $c01a           ;    Test %00000101 from BASIC ROM
+            beq one             ;
+            bit $c50e           ;    Test %00010100 from BASIC ROM
+            bne three           ;    
+one_or_two: bit $c01e           ;    Test %10011111 from BASIC ROM
+            bne two
+one:        dex                 ;    Instruction is 1 byte
+two:        dex                 ;    Instruction is 2 bytes
+three:      rts
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; DATA
@@ -2691,8 +2743,7 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >Help-1,>PlugMenu-1,>Labels-1,>DEF-1
 
 ; Plug-In Menu Data           
-MenuText:   .asc LF,"**** PLUG-IN MENU ****",LF
-            .asc "INSTALL: .P [ADDR]",LF,LF
+MenuText:   .asc LF,LF,"**** PLUG-IN MENU ****",LF
             .asc ".P ",QUOTE,"MEM CONFIG",QUOTE,LF
             .asc ".P ",QUOTE,"RELOCATE",QUOTE,LF
             .asc ".P ",QUOTE,"DEBUG",QUOTE,LF
@@ -2701,6 +2752,9 @@ MenuText:   .asc LF,"**** PLUG-IN MENU ****",LF
             .asc ".P ",QUOTE,"MUSIC",QUOTE,LF
             .asc ".P ",QUOTE,"WAXFER",QUOTE,LF
             .asc $00
+AddressTxt: .asc LF,"ADDR: $",$00
+NormalTxt:  .asc "TYPE: NORMAL",$00
+ListTxt:    .asc "TYPE: LIST",$00
             
 MenuChar1:  .asc "W","R","D","M","C","M","M"
 MenuChar2:  .asc "A","E","E","L","H","U","E"
@@ -2708,23 +2762,11 @@ MenuLoc_L:  .byte <uwAxfer,<uRelocate,<uDebug,<uML2BAS
             .byte <uChar,<uwAxScore,<uConfig
 MenuLoc_H:  .byte >uwAxfer,>uRelocate,>uDebug,>uML2BAS
             .byte >uChar,>uwAxScore,>uConfig
-UsageLoc_L: .byte <wAxferUse,<RelocUse,<DebugUse,<ML2BASUse
-            .byte <CharUse,<wAxScUse,<ConfigUse
-UsageLoc_H: .byte >wAxferUse,>RelocUse,>DebugUse,>ML2BASUse
-            .byte >CharUse,>wAxScUse,>ConfigUse
 
 ; Built-In plug-in instructions
 ; Right padding is included to make it look prtty if the menu is used
 ; multiple times in the same place
-UsageTxt:   .asc LF," USAGE:",LF,$00          
-wAxferUse:  .asc ".U [B/T][ADDR]      ",LF,$00
-RelocUse:   .asc ".U FROM TO NEWADDR  ",LF,$00
-DebugUse:   .asc ".U ADDR             ",LF,$00
-ML2BASUse:  .asc ".U FROM TO+1 [R/H/T]",LF,$00
-CharUse:    .asc ".U [ADDR]           ",LF,$00
-wAxScUse:   .asc ".U ADDR [R]         ",LF,$00
-ConfigUse:  .asc ".U 0K/3K/24K        ",LF,$00
-      
+UsageTxt:   .asc LF," USAGE:",LF,".U ",$00          
 
 ; Addresses for error message text
 ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
@@ -3108,7 +3150,7 @@ Extended:   .byte $0b,$87       ; ANC
             .byte XTABLE_END,$00; End of 6502 extended table
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; wAx USER TOOLS
+; wAx USER PLUG-INS
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -3136,7 +3178,9 @@ TERMMODE    = $0249             ; Terminal mode (bit 7 S=Term, C=PRG)
 RUNNING     = $024a             ; Running
 BASIC       = $024b             ; BASIC program
 
-uwAxfer:    bcc ch_pk           ; If no address is provided, check for T
+uwAxfer:    jmp ph_waxfer
+            .asc $00,"[B/T][ADDR]       ",$00
+ph_waxfer:  bcc ch_pk           ; If no address is provided, check for T
             lda #2              ; Set header as though the header has already
             sta HEADER          ;   been read
             jsr EAtoCP          ; Program counter will be start of memory
@@ -3258,7 +3302,9 @@ OFFSET      = $024b             ; Offset (C_PT - EFADDR, 2 bytes)
 -OPERAND    = $024d             ; Instruction operand (2 bytes)           
 
             ; Parameter collection
-uRelocate:  bcs okay            ; Error if invalid first argument (source start)
+uRelocate:  jmp ph_reloc
+            .asc $00,"FROM TO TARGET    ",$00
+ph_reloc:   bcs okay            ; Error if invalid first argument (source start)
 error:      jmp $cf08           ; ?SYNTAX ERROR, warm start
 okay:       jsr Buff2Byte       ; Get high byte of source end
             bcc error           ; ,,
@@ -3302,21 +3348,9 @@ okay:       jsr Buff2Byte       ; Get high byte of source end
             ; Relocation process
 Relocate:   ldy #$00            ; Load instruction opcode
             lda (C_PT),y        ; ,,
-            ldx #$03            ; Determine instruction length
-            cmp #$20            ;    JSR is a special case, then various bit
-            beq three           ;    patterns are tested
-            bit $c3b9           ;    Test %00001000 from BASIC ROM
-            beq one_or_two      ;    
-            bit $c01a           ;    Test %00000101 from BASIC ROM
-            beq one             ;
-            bit $c50e           ;    Test %00010100 from BASIC ROM
-            bne three           ;    
-one_or_two: bit $c01e           ;    Test %10011111 from BASIC ROM
-            bne two
-one:        dex                 ;    Instruction is 1 byte
-two:        dex                 ;    Instruction is 2 bytes
+            jsr SizeOf          ; Get instruction size
             bpl rnext           ; 1/2 bytes - Always advance to next instruction
-three:      iny                 ; 3 bytes - Something to potentially update.
+            iny                 ; 3 bytes - Something to potentially update.
             lda (C_PT),y        ;   Grab the operand from the two bytes after
             sta OPERAND         ;   the opcode...
             cmp EFADDR          ;   ,,            
@@ -3370,7 +3404,9 @@ KNAPSIZE    = BREAKPT+2         ; Knapsack size (1 byte)
 ; Main routine entry point
 ; * If setting a breakpoint, its address is in EFADDR vector
 ; * If clearing a breakpoint, the Carry flag is clear
-uDebug:     bcs NewKnap         ; A legal address has been provided in $a6/$a7
+uDebug:     jmp ph_debug
+            .asc $00,"ADDR              ",$00 
+ph_debug:   bcs NewKnap         ; A legal address has been provided in $a6/$a7
 restore:    lda BREAKPT         ; Otherwise, restore the breakpoint to the
             sta EFADDR          ;   original code by copying the
             lda BREAKPT+1       ;   bytes in the knapsack back to the code
@@ -3394,10 +3430,10 @@ NewKnap:    lda KNAPSIZE        ; Don't install a knapsack if there's already
             sty KNAPSACK        ; ,,
             lda #$ea            ; (NOP)
             sta KNAPSACK+1      ; ,,
-next_inst:  tya                 ; Preserve Y against SizeOf
+next_inst:  tya                 ; Preserve Y against SizeLookup
             pha                 ; ,,
             lda (EFADDR),y      ; A = Opcode of the breakpoint instruction
-            jsr SizeOf          ; X = Size of instruction (1-3)
+            jsr SizeLookup      ; X = Size of instruction (1-3)
             pla
             tay
             bcs xfer            ; Error if branch or unknown instruction
@@ -3444,7 +3480,7 @@ knap_r:     rts
 ; Size Of Instruction
 ; Given an opcode in A, return instruction size in X and set Carry flag
 ; Carry clear indicates an error (unknown or relative branch instruction)        
-SizeOf:     jsr Lookup
+SizeLookup: jsr Lookup
             bcc size_r          ; Return with Carry clear to indicate error
             lsr                 ; Addressing mode is in high nybble, so
             lsr                 ;   shift it to the right to get an index
@@ -3467,7 +3503,9 @@ LINE_NUM    = $0247             ; BASIC Line Number (2 bytes)
 MODIFIER    = $0249             ; Relocate or absolute
 FAIL_POINT  = $024a             ; BASIC program end restore point (2 bytes)
 
-uML2BAS:    bcc merror          ; Error if the first address is no good
+uML2BAS:    jmp ph_ml2bas
+            .asc $00,"FROM TO+1 [R/H/T] ",$00
+ph_ml2bas:  bcc merror          ; Error if the first address is no good
             jsr Buff2Byte       ; Get high byte of range end
             bcc merror          ; ,,
             sta RANGE_END+1     ; ,,
@@ -3723,7 +3761,9 @@ min_range:  clc
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CURBYTE     = $0247             ; Current byte value
 
-uChar:      bcc Canvas
+uChar:      jmp ph_char
+            .asc $00,"[ADDR]            ",$00
+ph_char:    bcc Canvas
             lda #$00
             sta $07
             lda $0288
@@ -3791,7 +3831,9 @@ HALF        = $40               ; Half note
 QUARTER     = $20               ; Quarter note
 EIGHTH      = $10               ; Eighth note
 
-uwAxScore:  bcs maddr_ok        ; Bail if no valid address was provided
+uwAxScore:  jmp ph_waxsc
+            .asc $00,"ADDR [R]          ",$00
+ph_waxsc    bcs maddr_ok        ; Bail if no valid address was provided
             rts                 ; ,,
 maddr_ok:   lda #$08            ; Set volume
             sta VOLUME          ; ,,
@@ -4064,7 +4106,9 @@ Oct1:       .byte 0,194,197,201,204,207,209,212,214,217,219,221,223,225
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; MEMORY CONFIG
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-uConfig:    jsr ResetIn
+uConfig:    jmp ph_conf
+            .asc $00,"0K/3K/24K         ",$00
+ph_conf:    jsr ResetIn
             jsr CharGet
             cmp #"0"
             beq GO0K
@@ -4073,7 +4117,7 @@ uConfig:    jsr ResetIn
             cmp #"2"
             beq GO24K
             ldy #6
-            jmp show_use
+            rts
 GO0K:       lda #16
             .byte $3c           ; TOP (skip word)
 GO3K:       lda #4
