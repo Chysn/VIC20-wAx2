@@ -2686,7 +2686,7 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
 
 ; Plug-In Menu Data           
 MenuText:   .asc LF,"**** PLUG-IN MENU ****",LF
-            .asc "INSTALL: .P [ADDR]",LF
+            .asc "INSTALL: .P [ADDR]",LF,LF
             .asc ".P ",QUOTE,"MEM CONFIG",QUOTE,LF
             .asc ".P ",QUOTE,"RELOCATE",QUOTE,LF
             .asc ".P ",QUOTE,"DEBUG",QUOTE,LF
