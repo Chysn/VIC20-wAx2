@@ -5,12 +5,7 @@
 ;                           (c)2020-2022 Jason Justian
 ;                  
 ; Release 1  - May 16, 2020
-; Release 2  - May 23, 2020
-; Release 3  - May 30, 2020
-; Release 4K - June 14, 2020
-; Release 5  - July 6, 2020
-; Release 6  - September 12, 2021
-; wAx2       - January 16, 2022
+; wAx2       - January 23, 2022
 ; Assembled with XA
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
