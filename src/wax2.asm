@@ -43,7 +43,7 @@ MAX_LAB     = 19                ; Maximum number of user labels + 1
 MAX_FWD     = 12                ; Maximum number of forward references
 
 ; Tool Setup
-TOOL_COUNT  = $1c               ; How many tools are there?
+TOOL_COUNT  = $1b               ; How many tools are there?
 WEDGE       = "."               ; The wedge character
 T_DIS       = "D"               ; Tool character D for disassembly
 T_XDI       = "E"               ; Tool character E for extended opcodes
@@ -69,7 +69,6 @@ T_SYM       = $ac               ; Tool character * for symbol table management
 T_BAS       = $ae               ; Tool character ^ for BASIC stage select
 T_USR       = "U"               ; Tool character U for user plug-in
 T_MEN       = "P"               ; Tool character P for plug-in menu
-T_USL       = $5c               ; Tool character GPB for user list
 T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
 LABEL       = "@"               ; Label sigil (@)
@@ -185,7 +184,7 @@ C_PT        = $03               ; Command Pointer (2 bytes)
 USER_VECT   = $05               ; Plug-in vector (2 bytes)
 WORK        = $a4               ; Temporary workspace (2 bytes)
 MNEM        = $a4               ; Current Mnemonic (2 bytes)
-EFADDR      = $a6               ; Program Counter (2 bytes)
+EFADDR      = $a6               ; Effective Address (2 bytes)
 CHARDISP    = $a8               ; Character display for Memory (2 bytes)
 LANG_PTR    = $a8               ; Language Pointer (2 bytes)
 PREV_IDX    = $a8               ; Previous index
@@ -219,12 +218,13 @@ jIncAddr:   jmp IncAddr         ; a00f
 jIncCP:     jmp IncCP           ; a012
 jLookup:    jmp Lookup          ; a015
 jPrintBuff: jmp PrintBuff       ; a018
-jResetIn:   jmp ResetIn         ; a01a
-jResetOut:  jmp ResetOut        ; a01d
-jShowAddr:  jmp ShowAddr        ; a020
-jShowCP:    jmp ShowCP          ; a023
-jEAtoCP:    jmp EAtoCP          ; a026
-jPrintStr:  jmp PrintStr        ; a029
+jResetIn:   jmp ResetIn         ; a01b
+jResetOut:  jmp ResetOut        ; a01e
+jShowAddr:  jmp ShowAddr        ; a021
+jShowCP:    jmp ShowCP          ; a024
+jEAtoCP:    jmp EAtoCP          ; a027
+jPrintStr:  jmp PrintStr        ; a02a
+jNextList:  jmp NextList        ; a02d
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -250,12 +250,14 @@ nonwAxpand: lda #<Intro         ; Print introduction message
 defmenu:    stx USER_VECT       ;   ,,
             sty USER_VECT+1     ;   ,,
             jmp (READY)         ; Warm start with READY prompt
-has_exp:    lda $2000           ; Test lowest byte of Block 1 RAM to
+has_exp:    sei                 ; Just in case there's an IRQ handler here
+            lda $2000           ; Test lowest byte of Block 1 RAM to
             inc $2000           ;   determine whether this software should
             cmp $2000           ;   introduce itself as "WAXPANDER"
             php                 ;   ,,
             dec $2000           ;   ,,
             plp                 ;   ,,
+            cli
             rts
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -392,24 +394,24 @@ ListLine:   txa
             beq to_mem          ; ,,
             cmp #T_BIN          ; Binary Dump
             beq to_bin          ; ,,
-            cmp #T_USL          ; User list tool
+            cmp #T_USR          ; User list tool
             beq to_usr          ; ,,
             cmp #T_INT          ; Text list tool
             beq to_int          ; ,,
             jsr Space           ; Space goes after address for Disassembly
             jsr Disasm
-            jmp continue
+            jmp NextList
 to_mem:     lda #":"            ; Memory editor character goes after address
             jsr CharOut         ; ,,
             jsr Memory          ; Do Memory display
-            jmp continue
+            jmp NextList
 to_bin:     jsr CharOut         ; Binary editor character goes after address
             jsr BinaryDisp      ; Do Binary display
-            jmp continue
+            jmp NextList
 to_int:     jsr TextDisp        ; Do text display
-            jmp continue
-to_usr:     jsr PlugIn            
-continue:   jsr PrintBuff      
+            jmp NextList
+to_usr:     jmp (USER_VECT)
+NextList:   jsr PrintBuff      
             pla
             tax
             bpl skip_range      ; If X bit 7 is clear, don't check range
@@ -2140,7 +2142,16 @@ Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
 ; USER PLUG-IN
 ; https://github.com/Chysn/wAx/wiki/User-Plug-In
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-PlugIn:     jmp (USER_VECT)
+PlugIn:     php                 ; Push processor status, used by most tools
+            ldx #0              ; If the user plug-in's code begins with NOP,
+            lda (USER_VECT,x)   ;   then the plug-in will use the List tool
+            cmp #$ea            ;   to format its output. Otherwise, it will be
+            beq is_list         ;   run as a normal tool
+            plp                 ; Normal tool
+            jmp (USER_VECT)     ; ,,
+is_list:    plp                 ; List tool
+            jsr List            ; ,,
+            rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; PLUG-IN MENU COMPONENT
@@ -2664,18 +2675,18 @@ DirectMode: ldy CURLIN+1
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; ToolTable contains the list of tools and addresses for each tool
 ToolTable:	.byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
-            .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR,T_USL
+            .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR
             .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,LABEL,$96
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
-            .byte <SetCP-1,<BASICStage-1,<PlugIn-1,<List-1,
+            .byte <SetCP-1,<BASICStage-1,<PlugIn-1
             .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
             .byte <Help-1,<PlugMenu-1,<Labels-1,<DEF-1
 ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
-            .byte >SetCP-1,>BASICStage-1,>PlugIn-1,>List-1
+            .byte >SetCP-1,>BASICStage-1,>PlugIn-1
             .byte >Assemble-1,>Register-1,>Directory-1,>List-1,>Compare-1
             .byte >Help-1,>PlugMenu-1,>Labels-1,>DEF-1
 
@@ -2737,8 +2748,9 @@ HelpScr2:   .asc "@ LABELS   * SET CP",LF
             .asc "L LOAD     S SAVE",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
-            .asc "U PLUG-IN  ",$5c," USR LIST",LF
-            .asc "P MENU     X EXIT",LF,$00
+            .asc "X EXIT",LF,LF
+            .asc "    USER PLUG-INS:",LF
+            .asc "U RUN      P MANAGE",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
