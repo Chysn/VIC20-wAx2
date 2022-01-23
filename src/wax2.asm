@@ -1784,7 +1784,7 @@ find_empty: ldx #$00            ; Now, search ALL the records, this time looking
 overflow:   inc OVERFLOW_F      ; Increment overflow counter if no records are
             beq overflow        ;   left; if it rolls to 0, set it to 1 instead
             jsr DirectMode      ; If the overflow happens in direct mode, show
-            bne addfwd_r        ;   the Symbol Error. In BASIC, this condition
+            bne set_ur          ;   the Symbol Error. In BASIC, this condition
             jmp SymError        ;   can be caught, so keep going for multi-pass
 empty_rec:  tya
             ora #$80            ; Set the high bit to indicate record in use
@@ -1798,6 +1798,18 @@ store_rec:  sta SYMBOL_F,x      ; Store the label index in the record
             lda EFADDR+1        ;   later resolution
             sta SYMBOL_FH,x     ;   ,,
 addfwd_r:   rts
+set_ur:     lda #"U"+$80        ; During BASIC operation, set UR% to the
+            sta $45             ;   number of unresolved forward references
+            lda #"R"+$80        ;   on overflow condition. This allows
+            sta $46             ;   multi-pass assembly
+            jsr FNDVAR          ;   ,,
+            ldy #1              ;   ,,
+            lda OVERFLOW_F      ;   ,,
+            sta ($47),y         ;   ,,
+            dey
+            lda #0
+            sta ($47),y
+            rts
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; BASIC STAGE SELECT COMPONENT
@@ -2630,6 +2642,9 @@ prompt_r:   rts
                             
 ; In Direct Mode
 ; If the wAx tool is running in Direct Mode, the Zero flag will be set
+;    jsr DirectMode
+;    beq running_direct
+;    bne running_basic
 DirectMode: ldy CURLIN+1
             iny
             rts
