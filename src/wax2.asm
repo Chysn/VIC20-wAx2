@@ -77,7 +77,8 @@ T_MEN       = "P"               ; Tool character P for plug-in menu
 T_USL       = $5c               ; Tool character GPB for user list
 T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
-LABEL       = "@"               ; Symbol dereferencer (@)
+LABEL       = "@"               ; Label sigil (@)
+FWD_LABEL   = "&"               ; Forward label sigil (&) 
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -1545,10 +1546,10 @@ init_r:     rts
 ; Get Symbol Index
 ; Return symbol index in Y and set Carry
 ; Error (all symbols used, or bad symbol) if Carry clear
-SymbolIdx:  cmp #"."
+SymbolIdx:  cmp #FWD_LABEL
             bne sym_range
             ldy #MAX_LAB-1
-            lda #"."+$80
+            lda #FWD_LABEL+$80
             pha
             lda IDX_IN
             cmp #5
@@ -1621,7 +1622,8 @@ next_label: pla
             pha                 ;   ,,
             jsr Space           ;   ,,
             jsr ReverseOn       ;   ,,
-            jsr GT              ;   ,,
+            lda #"?"            ;   ,,
+            jsr CharOut         ;   ,,
             pla                 ;   ,,
             jsr Hex             ;   ,,
 lablist_r:  jsr PrintBuff       ;   ,,
@@ -1645,7 +1647,8 @@ show_fwd:   tya
             ldx IDX_SYM
             jsr LabListCo
             jsr ReverseOn
-            jsr GT
+            lda #"?"
+            jsr CharOut
             pla
             jsr Hex
 fwd_d:      jsr PrintBuff
@@ -2092,14 +2095,15 @@ toggle_off: asl
 ; Start Line
 ; Reset the output buffer, and add the addresses
 StartLine:  jsr ResetOut
-            lda #"$"
+            jsr wAxPrompt
+            lda #T_MEM
             jsr CharOut
+            jsr Space
             jsr ShowAddr
-            lda #","
+            lda #";"
             jsr CharOut
             jsr ShowCP
-            lda #":"
-            jsr CharOut
+            jsr Space
             rts
 
 ; End Line
@@ -2149,7 +2153,10 @@ PlugIn:     jmp (USER_VECT)
 CurChar     = $0247
 
 PlugMenu:   jsr ResetIn         ; Reset in to get just a single hex byte
-            jsr CharGet         ; Get two characters from input
+            jsr CharGet         ; If the next character is ", then install by
+            cmp #QUOTE          ;   name. Otherwise, do an address-based
+            bne user_inst       ;   install
+            jsr CharGet         ; Get the next two characters after the quote
             sta CurChar         ; ,,
             jsr CharGet         ; ,,
             sta CurChar+1       ; ,,
@@ -2189,6 +2196,14 @@ show_use:   tya                 ; Show "USAGE"
             tay                 ; ,,
             pla                 ; ,,
             jmp PrintStr        ; ,,
+user_inst:  jsr ResetIn         ; Install plug-in by address
+            jsr Buff2Byte       ; ,,
+            bcc ShowMenu        ; ,,
+            sta $06             ; ,,
+            jsr Buff2Byte       ; ,,
+            bcc ShowMenu        ; ,,
+            sta $05             ; ,,
+            rts                 ; ,,
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; SUBROUTINES
@@ -2671,14 +2686,14 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
 
 ; Plug-In Menu Data           
 MenuText:   .asc LF,"**** PLUG-IN MENU ****",LF
-            .asc ".P MEM CONFIG",$0d
-            .asc ".P RELOCATE",$0d
-            .asc ".P DEBUG",$0d
-            .asc ".P ML TO BASIC",$0d
-            .asc ".P CHAR HELPER",$0d
-            .asc ".P MUSIC",$0d
-            .asc ".P WAXFER",$0d
-            .asc 0
+            .asc ".P ",QUOTE,"MEM CONFIG",QUOTE,LF
+            .asc ".P ",QUOTE,"RELOCATE",QUOTE,LF
+            .asc ".P ",QUOTE,"DEBUG",QUOTE,LF
+            .asc ".P ",QUOTE,"ML TO BASIC",QUOTE,LF
+            .asc ".P ",QUOTE,"CHAR HELPER",QUOTE,LF
+            .asc ".P ",QUOTE,"MUSIC",QUOTE,LF
+            .asc ".P ",QUOTE,"WAXFER",QUOTE,LF
+            .asc $00
             
 MenuChar1:  .asc "W","R","D","M","C","M","M"
 MenuChar2:  .asc "A","E","E","L","H","U","E"
