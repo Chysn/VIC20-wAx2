@@ -587,7 +587,8 @@ abs_ind:    jsr Comma           ; This is an indexed addressing mode, so
 ; MEMORY EDITOR COMPONENTS
 ; https://github.com/Chysn/wAx/wiki/Memory-Editor
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-MemEditor:  sta TOOL_CHR        ; Update tool character for Prompt
+; Memory Editor               
+MemEdit:    sta TOOL_CHR        ; Update tool character for Prompt
             lda #$04            ; The number of allowed bytes is temporarily
             sta CHARAC          ;   stored in CHARAC.
             jsr DirectMode      ; If MemEditor is run in a BASIC program, allow
@@ -609,10 +610,21 @@ edit_exit:  cpy #$00
             jsr ClearBP         ; Clear breakpoint if anything was changed
 edit_r:     rts
 
+; Screen Code Editor
+; Like text editor, but writes screen codes
+ScrEdit:    jsr CharGet         ; For a screen code editor, the character
+            cmp #QUOTE          ;   after / must be a quote. After this, it
+            bne asm_error       ;   mostly behaves like a text editor, except
+            sec                 ;   that it converts PETSCII to screen code
+            ror CHARAC          ;   ,,
+            .byte $3c           ; Skip the clearing of CHARAC below
+            ; Fall through to TextEdit
+
 ; Text Editor
 ; If the input starts with a quote, add characters until we reach another
 ; quote, or 0
-TextEdit:   ldy #$00            ; Y=Data Index
+TextEdit:   lsr CHARAC
+            ldy #$00            ; Y=Data Index
 -loop:      jsr CharGet
             beq edit_exit       ; Return to MemEditor if 0
             cmp #QUOTE          ; Is the character a quotation mark? 
@@ -625,7 +637,13 @@ TextEdit:   ldy #$00            ; Y=Data Index
 non_quote:  cmp #$99            ; The PRINT token is converted to ?
             bne non_qm
             lda #"?"
-non_qm:     sta (EFADDR),y      ; Populate data
+non_qm:     bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
+            bpl skip_conv       ;   editor
+            and #$bf            ; Convert provided PETSCII value into a
+            bpl skip_conv       ;   screen code
+            and #$7f            ;   ,,
+            ora #$40            ;   ,,
+skip_conv:  sta (EFADDR),y      ; Populate data
             iny
             cpy #$10            ; String size limit
             beq edit_exit
@@ -662,11 +680,14 @@ post_text:
             cmp #LABEL          ; @ = New label
             beq DefLabel        ; ,,
             cmp #":"            ; Colon = Byte entry (route to hex editor)
-            beq MemEditor       ; ,,
-            cmp #QUOTE          ; " = Text entry (route to text editor)
+            bne ch_txt          ; ,,
+            jmp MemEdit         ; ,,
+ch_txt:     cmp #QUOTE          ; " = Text entry (route to text editor)
             beq TextEdit        ; ,,
             cmp #T_BIN          ; % = Binary entry (route to binary editor)
             beq BinaryEdit      ; ,,
+            cmp #"/"            ; / = Screen code entry (route to screen code
+            beq ScrEdit         ;   editor)
 op_parts:   cmp #"#"            ; # = Parse immediate operand (quotes and %)
             beq ImmedOp         ; ,,         
             cmp #"$"            ; $ = Parse the operand
