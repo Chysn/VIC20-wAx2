@@ -639,10 +639,7 @@ non_quote:  cmp #$99            ; The PRINT token is converted to ?
             lda #"?"
 non_qm:     bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
             bpl skip_conv       ;   editor
-            and #$bf            ; Convert provided PETSCII value into a
-            bpl skip_conv       ;   screen code
-            and #$7f            ;   ,,
-            ora #$40            ;   ,,
+            jsr PETtoScr        ;   ,,
 skip_conv:  sta (EFADDR),y      ; Populate data
             iny
             cpy #$10            ; String size limit
@@ -753,10 +750,22 @@ pull_code:  ldy #$00            ; If there's code after the label, pull it
 ImmedOp:    jsr CharGet         ; This is the character right after #
             cmp #"$"            ; If it's $, go back to get regular $ operand
             beq main_op         ; ,,
+try_slash:  cmp #"/"            ; If it's a quote preceeded by a slash, treat
+            bne try_quote
+            ldy IDX_IN
+            dey
+            lda #1
+            sta INBUFFER,y
+            jsr CharGet
+            cmp #QUOTE
+            bne AsmError
+            jsr CharGet
+            jsr PETtoScr
+            jmp close_qu
 try_quote:  cmp #QUOTE          ; If it's a double quote, make sure it's a one
             bne try_binary      ;   character surrounded by quotes. If it is,
             jsr CharGet         ;   set it as the operand and convert it to
-            sta OPERAND         ;   hex for the hypotester
+close_qu:   sta OPERAND         ;   hex for the hypotester
             jsr CharGet         ;   ,,
             cmp #QUOTE          ;   ,,
             bne AsmError        ;   ,, Error if the second quote isn't here
@@ -2740,6 +2749,14 @@ one_or_two: bit $c01e           ;    Test %10011111 from BASIC ROM
 one:        dex                 ;    Instruction is 1 byte
 two:        dex                 ;    Instruction is 2 bytes
 three:      rts
+
+; Convert PETSCII to Screen Code
+; In A
+PETtoScr:   and #$bf            ; Convert provided PETSCII value into a
+            bpl pet_r           ;   screen code
+            and #$7f            ;   ,,
+            ora #$40            ;   ,,
+pet_r       rts
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; DATA
