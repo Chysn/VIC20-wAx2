@@ -11,6 +11,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
 ; Copyright (c) 2020-2022 Jason Justian
+; uRelocate code by Michael Kircher, 2020, used with permission and my thanks
 ;
 ; Permission is hereby granted, free of charge, to any person obtaining a copy
 ; of this software and associated documentation files (the "Software"), to deal
@@ -3334,7 +3335,7 @@ OFFSET      = $024b             ; Offset (C_PT - EFADDR, 2 bytes)
 
             ; Parameter collection
 uRelocate:  jmp ph_reloc
-            .asc $00,".U FROM TO TARGET    ",$00
+            .asc $00,".U FROM TO TARGET",$00
 ph_reloc:   bcs okay            ; Error if invalid first argument (source start)
 error:      jmp $cf08           ; ?SYNTAX ERROR, warm start
 okay:       jsr Buff2Byte       ; Get high byte of source end
@@ -3377,10 +3378,11 @@ okay:       jsr Buff2Byte       ; Get high byte of source end
             ; Fall through to Relocate
             
             ; Relocation process
-Relocate:   ldy #$00            ; Load instruction opcode
+Relocate:   ldy #0              ; Load instruction opcode
             lda (C_PT),y        ; ,,
-            jsr SizeOf          ; Get instruction size
-            bpl rnext           ; 1/2 bytes - Always advance to next instruction
+            jsr SizeOf          ; Get instruction size in X
+            cpx #3              ; 1/2 bytes - Always advance to next instruction
+            bne rnext           ; ,,
             iny                 ; 3 bytes - Something to potentially update.
             lda (C_PT),y        ;   Grab the operand from the two bytes after
             sta OPERAND         ;   the opcode...
