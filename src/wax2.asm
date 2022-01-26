@@ -2753,11 +2753,25 @@ three:      rts
 
 ; Convert PETSCII to Screen Code
 ; In A
-PETtoScr:   and #$bf            ; Convert provided PETSCII value into a
-            bpl pet_r           ;   screen code
-            and #$7f            ;   ,,
-            ora #$40            ;   ,,
-pet_r       rts
+PETtoScr:   cmp #$ff            ; Is pi
+            beq pi
+            cmp #$c0
+            bcs b_c0
+            cmp #$a0
+            bcs b_a0
+            cmp #" "
+            bcc pet_r
+            cmp #$60
+            bcc s_60
+            and #$df
+            bne pet_r
+s_60:       and #$3f
+pet_r:      rts
+b_a0:       sbc #$40
+b_c0:       and #$7f
+            .byte $3c
+pi:         lda #$5E
+            rts   
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; DATA
