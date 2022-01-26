@@ -2769,7 +2769,7 @@ s_60:       and #$3f
 pet_r:      rts
 b_a0:       sbc #$40
 b_c0:       and #$7f
-            .byte $3c
+            rts
 pi:         lda #$5E
             rts   
                         
