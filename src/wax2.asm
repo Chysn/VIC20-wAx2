@@ -232,20 +232,20 @@ jSizeOf:    jmp SizeOf          ; a033
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-Install:    jsr has_exp         ; Determine whether to introduce this software
+Install:    lda #<Intro         ; Print introduction message
+            ldy #>Intro         ; ,,
+            jsr PrintStr        ; ,,
+            jsr has_exp         ; Determine whether to introduce this software
             beq nonwAxpand      ;   as wAxpander, based on RAM in Block 3
             lda #<wAxpander     ;   ,,
             ldy #>wAxpander     ;   ,,
             jsr PrintStr        ;   ,,
-nonwAxpand: lda #<Intro         ; Print introduction message
-            ldy #>Intro         ; ,,
-            jsr PrintStr        ; ,,
-            jsr Rechain         ; Rechain BASIC program
+nonwAxpand: jsr Rechain         ; Rechain BASIC program
             jsr SetupVec        ; Set up vectors (IGONE and BRK)
             lda #DEF_DEVICE     ; Set default device number
             sta DEVICE          ; ,,
-            ldx #<PlugMenu      ; If this is not a wAxpander, the default user
-            ldy #>PlugMenu      ;   tool is the Relocator
+            ldx #<uRelocate     ; If this is not a wAxpander, the default user
+            ldy #>uRelocate     ;   tool is the Relocator
             jsr has_exp         ;   ,,
             beq defmenu         ;   ,,
             ldx #<uConfig       ; If this is a wAxpander, the default user tool
@@ -2819,9 +2819,17 @@ ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
 ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
-wAxpander:  .asc LF,"WAXPANDER (WAX+27K)",LF,$00
-Intro:      .asc LF,"BEIGEMAZE.COM/WAX2",LF
-            .asc ".? FOR HELP",LF,$00
+wAxpander:  .asc CRSRUP,CRSRUP,CRSRUP,CRSRRT,CRSRRT
+            .asc "WAXPANDER: WAX+27K",LF,LF,LF,$00
+Intro:      .asc LF," ",$b0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
+            .asc $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$ae,LF
+            .asc " ",$dd,"BEIGEMAZE.COM/WAX2",$dd,LF
+            .asc " ",$dd,"                  ",$dd,LF
+            .asc " ",$dd,"                  ",$dd,LF
+            .asc " ",$dd,"   .? FOR HELP    ",$dd,LF
+            .asc " ",$ad,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
+            .asc $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$bd,LF,$00
+            
 Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0
             .asc "P",$c0,$c0,"S",$c0,$c0,"PC",$c0,$c0,LF,".",";",$00
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
@@ -2837,7 +2845,7 @@ HelpScr2:   .asc "@ LABELS   * SET CP",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
             .asc "X EXIT",LF,LF
-            .asc "    USER PLUG-INS:",LF
+            .asc "     USER PLUG-IN",LF
             .asc "U INVOKE   P INSTALL",LF,$00
 
 ; Error messages
@@ -4181,7 +4189,7 @@ soft_reset:	jsr	$fd52		    ; restore default I/O vectors
 	        jsr	$e404		    ; Print start up message and initialise memory pointers
 	        ldx	#$fb			; Value for start stack
 	        txs				    ; Set stack pointer
-	        jsr nonwAxpand      ; Show basic wAx intro
+	        jsr Install         ; Re-install wAx
 	        jmp	$c474
 GO24K:      lda #$12
             sta $0282
