@@ -4162,14 +4162,14 @@ Oct1:       .byte 0,194,197,201,204,207,209,212,214,217,219,221,223,225
 ; MEMORY CONFIG
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 uConfig:    jmp ph_conf
-            .asc $00,".U 0K/3K/24K         ",$00
+            .asc $00,".U 0K/3K/MAX         ",$00
 ph_conf:    jsr ResetIn
             jsr CharGet
             cmp #"0"
             beq GO0K
             cmp #"3"
             beq GO3K
-            cmp #"2"
+            cmp #"M"
             beq GO24K
             ldy #6
             rts
