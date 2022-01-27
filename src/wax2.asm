@@ -640,7 +640,9 @@ non_quote:  cmp #$99            ; The PRINT token is converted to ?
             lda #"?"
 non_qm:     bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
             bpl skip_conv       ;   editor
-            jsr PETtoScr        ;   ,,
+            bit main_r          ; BIT #$60. Check for control character and
+            beq loop            ;   ignore control characters here
+            jsr PETtoScr        ; Perform the conversion
 skip_conv:  sta (EFADDR),y      ; Populate data
             iny
             cpy #$10            ; String size limit
