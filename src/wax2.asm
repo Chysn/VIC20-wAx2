@@ -2844,7 +2844,7 @@ HelpScr2:   .asc "@ LABELS   * SET CP",LF
             .asc "L LOAD     S SAVE",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
-            .asc "X EXIT",LF,LF
+            .asc "X EXIT     ? HELP",LF,LF
             .asc "     USER PLUG-IN",LF
             .asc "U INVOKE   P INSTALL",LF,$00
 
