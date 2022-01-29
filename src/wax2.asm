@@ -590,18 +590,12 @@ abs_ind:    jsr Comma           ; This is an indexed addressing mode, so
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Memory Editor               
 MemEdit:    sta TOOL_CHR        ; Update tool character for Prompt
-            lda #$04            ; The number of allowed bytes is temporarily
-            sta CHARAC          ;   stored in CHARAC.
-            jsr DirectMode      ; If MemEditor is run in a BASIC program, allow
-            beq start_mem       ;   more bytes per line, because we don't need
-            lda #$08            ;   to worry about intrference with the PETSCII
-            sta CHARAC          ;   display.
-start_mem:  ldy #$00
+start_mem:  ldy #$0             ; Byte index
 -loop:      jsr Buff2Byte
             bcc edit_exit       ; Bail out on the first non-hex byte
             sta (EFADDR),y      
             iny
-            cpy CHARAC
+            cpy #8
             bne loop
 edit_exit:  cpy #$00
             beq asm_error
@@ -1007,7 +1001,8 @@ r_on:       lda (EFADDR),y
             cpy #$04
             beq show_char
             jmp loop       
-show_char:  jsr Space           ; Space after hex values
+show_char:  lda #";"            ; Comment after hex values
+            jsr CharOut         ; ,,
             jsr ReverseOn       ; Reverse on for the characters
             ldy #$00
 -loop:      lda CHARDISP,y
@@ -1055,9 +1050,16 @@ is_zero:    lda #"0"
 ; https://github.com/Chysn/wAx/wiki/Assertion-Tester 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Tester:     ldy #$00
+            jsr Buff2Byte
+            bcs add_test
+            jsr ResetOut
+            jsr wAxPrompt
+            lda (EFADDR),y
+            jsr Hex
+            jmp PrintBuff
 -loop:      jsr Buff2Byte
             bcc test_r          ; Bail out on the first non-hex byte
-            cmp (EFADDR),y
+add_test:   cmp (EFADDR),y
             bne test_err      
             iny
             bne loop
@@ -1405,8 +1407,7 @@ MemSearch:  ldy #$00
             bne loop
 no_match:   cmp #QUOTE          ; Is this the end of the search?
             bne next_check
-            lda #":"
-            jsr CharOut            
+            jsr wAxPrompt            
             jsr ShowAddr
             jsr PrintBuff
 next_check: jsr IncAddr  
@@ -2842,7 +2843,7 @@ HelpScr1:   .asc LF,LF,"**** WAX COMMANDS ****",LF
             .asc "R MEMORY   I TEXT",LF
             .asc "% BINARY   = ASSERT",LF
             .asc "T TRANSFER C COMPARE",LF,$00
-HelpScr2:   .asc "@ LABELS   * SET CP",LF
+HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
             .asc "L LOAD     S SAVE",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
@@ -3268,43 +3269,44 @@ setup:      lda #0              ; Set DDR to listen to all 8 data lines,
             bit TERMMODE        ; If this plug-in was invoked with an address or
             bpl standby         ;   PRG mode, just wait for STOP to be pressed
             jmp (READY)         ; For Terminal mode, just exit
-standby:    lda #171            ; Add a prompt
-            jsr $ffd2           ; ,,
-            lsr RUNNING         ; Clear RUNNING flag
+standby:    lsr RUNNING         ; Clear RUNNING flag
 wait:       bit TIMER           ; Has the timer advanced 64 jiffies?
             bvc ch_stop         ;   If not, check for STOP
             bit RUNNING         ;   If so, has the first byte come?
             bmi Complete        ;   If so, end and show info
-ch_stop:    jsr ISCNTC          ; Check for BREAK key
+ch_stop:    jsr ISCNTC          ; Check for STOP key
             beq Complete        ; If it's pressed, end data receive, show info
             bit RECEIVED        ; If data receive flag is off, just wait
             bpl wait            ; ,,
             lsr RECEIVED        ; Turn the flag off
             lda EFADDR          ; Are we at a multiple of 256 bytes?
             bne wait            ;   If not, wait
-            lda #192            ; If so, show progress bar
+            jsr ProgHead        ; Show progress header        
+            jsr ShowAddr        ; Show address during transfer
+            jsr PrintBuff       ; ,,
+            lda #CRSRUP         ; Cursor back up
             jsr $ffd2           ; ,,
             jmp wait            ; Back to start of wait loop
 
 ; Show Received Data Range            
-Complete:   lda #179            ; Close the progress bar
-            jsr $ffd2           ; ,,
-            lda #$0d            ; Drop to next line
-            jsr $ffd2           ; ,,
-            bit RUNNING         ; Was any data received?
+Complete:   bit RUNNING         ; Was any data received?
             bpl comp_r          ;   If not, just end without showing anything
-is_data:    jsr ResetOut        ; Show final locations...
-            jsr wAxPrompt       ;    wAx prompt
-            lda #T_DIS          ;    Disassemble tool
-            jsr CharOut         ;    ,,
-            jsr ShowCP          ;    Starting address
+is_data:    jsr ProgHead        ; Show progress header
+            jsr ShowCP          ;    Starting address        
             jsr Space           ;      to
-            jsr ShowAddr        ;    Ending address
-            jsr PrintBuff       ; ,,
+            jsr ShowAddr        ;   end address
+            jsr PrintBuff       ;   ,,
             bit BASIC           ; Rechain BASIC program, if specified with B
             bpl comp_r          ; ,,
             jsr Rechain         ; ,,
-comp_r:     jmp (READY)         
+comp_r:     jmp (READY) 
+
+; Show Progress Header
+ProgHead:   jsr ResetOut        ; Show final locations...
+            jsr wAxPrompt       ;    wAx prompt
+            lda #T_DIS          ;    Disassemble tool
+            jsr CharOut         ;    ,,
+            jmp Space
   
 ; Interrupt Service Routine
 ; Handles NMI Interrupt triggered by CB2 high-to-low transition                                  
