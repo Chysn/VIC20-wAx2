@@ -1049,14 +1049,23 @@ is_zero:    lda #"0"
 ; ASSERTION TESTER COMPONENT
 ; https://github.com/Chysn/wAx/wiki/Assertion-Tester 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Tester:     ldy #$00
-            jsr Buff2Byte
-            bcs add_test
-            jsr ResetOut
-            jsr wAxPrompt
-            lda (EFADDR),y
-            jsr Hex
-            jmp PrintBuff
+Tester:     bcc test_err        ; Error if no address
+            ldy #$00            ; Start with 0 index
+            jsr Buff2Byte       ; Is there a byte after the address?
+            bcs add_test        ; If so, insert it into the test, look for more
+            jsr ResetOut        ; If there's only an address, show the value
+            jsr wAxPrompt       ; Show values in an editor command     
+            jsr Comma           ; ,,
+            jsr ShowAddr        ; ,,
+            lda #":"            ; ,,
+            jsr CharOut         ; ,,
+            lda (EFADDR),y      ; Show two values
+            jsr Hex             ;   ,,
+            jsr Space           ;   separated by a space
+            iny                 ;   ,,
+            lda (EFADDR),y      ;   ,,
+            jsr Hex             ;   ,,
+            jmp PrintBuff       ;   ,,
 -loop:      jsr Buff2Byte
             bcc test_r          ; Bail out on the first non-hex byte
 add_test:   cmp (EFADDR),y
@@ -2408,8 +2417,6 @@ pc_r:       rts
 ; Commonly-Used Characters
 Semicolon:  lda #";"            
             .byte $3c           ; TOP (skip word)
-GT:         lda #">"
-            .byte $3c           ; TOP (skip word)
 ReverseOn:  lda #RVS_ON
             .byte $3c           ; TOP (skip word)
 CloseParen: lda #")"
@@ -2797,7 +2804,7 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >Help-1,>PlugMenu-1,>Labels-1,>DEF-1
 
 ; Plug-In Menu Data           
-MenuText:   .asc LF,LF,"**** PLUG-IN MENU ****",LF
+MenuText:   .asc LF,"PLUG-IN MENU",LF,LF
             .asc ".P ",QUOTE,"MEM CONFIG",QUOTE,LF
             .asc ".P ",QUOTE,"RELOCATE",QUOTE,LF
             .asc ".P ",QUOTE,"DEBUG",QUOTE,LF
@@ -2836,7 +2843,7 @@ Intro:      .asc LF," ",$b0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
 Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0
             .asc "P",$c0,$c0,"S",$c0,$c0,"PC",$c0,$c0,LF,".",";",$00
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc LF,LF,"**** WAX COMMANDS ****",LF
+HelpScr1:   .asc LF,"HELP",LF,LF
             .asc "D 6502 DIS E 6502+EXT",LF
             .asc "A ASSEMBLE R REGISTER",LF
             .asc "G GO       B BRKPOINT",LF
@@ -2847,9 +2854,8 @@ HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
             .asc "L LOAD     S SAVE",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
-            .asc "X EXIT     ? HELP",LF,LF
-            .asc "     USER PLUG-IN",LF
-            .asc "U INVOKE   P INSTALL",LF,$00
+            .asc "P PLUG-INS U INVOKE",LF
+            .asc "X EXIT     ? THIS",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
