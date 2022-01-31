@@ -189,6 +189,7 @@ EFADDR      = $a6               ; Effective Address (2 bytes)
 CHARDISP    = $a8               ; Character display for Memory (2 bytes)
 LANG_PTR    = $a8               ; Language Pointer (2 bytes)
 PREV_IDX    = $a8               ; Previous index
+SEARCH_S    = $a8               ; Search size
 OPCODE      = $aa               ; Assembly target for hypotesting
 OPERAND     = $ab               ; Operand storage (2 bytes)
 IDX_OUT     = $ad               ; Buffer index - Output
@@ -1362,6 +1363,8 @@ Search:     bcc srch_r          ; Bail if the address is no good
             beq srch_r          ; ,,
             lda #SEARCH_L       ; Set the search limit (in pages)
             sta SEARCH_C        ; ,,
+            lda #0              ; Reset search size
+            sta SEARCH_S        ; ,,
 next_srch:  jsr ISCNTC          ; Keep searching code until the user presses
             beq srch_stop       ;   Stop key
             lda EFADDR+1        ; Store the effective address high byte for
@@ -1409,28 +1412,11 @@ CodeSearch: lda #T_DIS
             jsr PrintBuff       ; Print address and disassembly   
             jmp check_end       ; Go back for more      
 
-; Memory Search
-; Compare a sequence of bytes in memory to the input. If there's a match,
-; indicate the starting address of the match.            
-MemSearch:  ldy #$00
--loop:      lda INBUFFER+5,y
-            cmp (EFADDR),y
-            bne no_match
-            iny
-            bne loop
-no_match:   cmp #QUOTE          ; Is this the end of the search?
-            bne next_check
-            jsr wAxPrompt            
-            jsr ShowAddr
-            jsr PrintBuff
-next_check: jsr IncAddr  
-            jmp check_end
-            
 ; Setup Hex Search
 ; by converting a hex search into a memory search. Transcribe hex characters
 ; into the input as values.       
-SetupHex:   lda #QUOTE          ; Changing the start of INBUFFER to a quote
-            sta INBUFFER+4      ;   turns it into a memory search
+SetupHex:   lda #QUOTE
+            sta INBUFFER+4
             lda #$05            ; Place the input index after the quote so
             sta IDX_IN          ;   it can get hex bytes
             ldy #$00            ; Count the number of hex bytes
@@ -1440,10 +1426,34 @@ SetupHex:   lda #QUOTE          ; Changing the start of INBUFFER to a quote
             iny
             cpy #$08
             bne loop
-setup_done: lda #QUOTE
-            sta INBUFFER+5,y
-            jmp check_end    
-            
+setup_done: sty SEARCH_S
+            jmp check_end 
+
+; Memory Search
+; Compare a sequence of bytes in memory to the input. If there's a match,
+; indicate the starting address of the match.            
+MemSearch:  ldy #0
+-loop:      lda INBUFFER+5,y
+            cmp (EFADDR),y
+            bne no_match
+            iny
+            bne loop
+no_match:   ldx SEARCH_S
+            beq end_quote
+            cpy SEARCH_S
+            bcs mem_found
+            bcc next_check
+end_quote:  cmp #QUOTE          ; Is this the end of the search?
+            bne next_check
+mem_found:  jsr wAxPrompt   
+            lda #T_MEM
+            jsr CharOut
+            jsr Space      
+            jsr ShowAddr
+            jsr PrintBuff
+next_check: jsr IncAddr  
+            jmp check_end
+                        
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; COPY COMPONENTS
 ; https://github.com/Chysn/wAx/wiki/Copy-and-Fill
