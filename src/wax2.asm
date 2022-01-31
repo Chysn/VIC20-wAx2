@@ -591,13 +591,15 @@ abs_ind:    jsr Comma           ; This is an indexed addressing mode, so
 ; Memory Editor               
 MemEdit:    sta TOOL_CHR        ; Update tool character for Prompt
 start_mem:  ldy #$0             ; Byte index
+            sei                 ; Stop interrupts during memory update
 -loop:      jsr Buff2Byte
             bcc edit_exit       ; Bail out on the first non-hex byte
             sta (EFADDR),y      
             iny
             cpy #8
             bne loop
-edit_exit:  cpy #$00
+edit_exit:  cli                 ; Re-enable interrupts after memory update
+            cpy #$00
             beq asm_error
             tya
             tax
@@ -665,7 +667,6 @@ asm_error:  jmp AsmError
 Assemble:   bcc asm_r           ; Bail if the address is no good
             lda INBUFFER+4      ; If the user just pressed Return at the prompt,
             beq asm_r           ;   go back to BASIC
-post_text:
 -loop:      jsr CharGet         ; Look through the buffer for either
             beq test            ;   0, which should indicate implied mode, or:
             ldy IDX_IN          ; If we've gone past the first character after
@@ -1056,6 +1057,7 @@ Tester:     bcc test_err        ; Error if no address
             jsr ResetOut        ; If there's only an address, show the value
             jsr wAxPrompt       ; Show values in an editor command     
             jsr Comma           ; ,,
+            jsr Space           ; ,,
             jsr ShowAddr        ; ,,
             lda #":"            ; ,,
             jsr CharOut         ; ,,
