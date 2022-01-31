@@ -620,7 +620,9 @@ ScrEdit:    jsr CharGet         ; For a screen code editor, the character
 ; Text Editor
 ; If the input starts with a quote, add characters until we reach another
 ; quote, or 0
-TextEdit:   lsr CHARAC
+TextEdit:   lda #0              ; Update tool character for prompt. It just
+            sta TOOL_CHR        ;   needs to not be T_ASM
+            lsr CHARAC
             ldy #$00            ; Y=Data Index
 -loop:      jsr CharGet
             beq edit_exit       ; Return to MemEditor if 0
