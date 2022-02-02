@@ -185,7 +185,7 @@ C_PT        = $03               ; Command Pointer (2 bytes)
 USER_VECT   = $05               ; Plug-in vector (2 bytes)
 WORK        = $a4               ; Temporary workspace (2 bytes)
 MNEM        = $a4               ; Current Mnemonic (2 bytes)
-EFADDR      = $a6               ; Effective Address (2 bytes)
+W_ADDR      = $a6               ; Working Address (2 bytes)
 CHARDISP    = $a8               ; Character display for Memory (2 bytes)
 LANG_PTR    = $a8               ; Language Pointer (2 bytes)
 PREV_IDX    = $a8               ; Previous index
@@ -224,7 +224,7 @@ jResetIn:   jmp ResetIn         ; a01b
 jResetOut:  jmp ResetOut        ; a01e
 jShowAddr:  jmp ShowAddr        ; a021
 jShowCP:    jmp ShowCP          ; a024
-jEAtoCP:    jmp EAtoCP          ; a027
+jAddr2CP:   jmp Addr2CP         ; a027
 jPrintStr:  jmp PrintStr        ; a02a
 jNextList:  jmp NextList        ; a02d
 jDirectMode:jmp DirectMode      ; a030
@@ -321,10 +321,10 @@ Prepare:    sta TOOL_CHR        ; Store the tool character
 RefreshEA:  jsr ResetIn         ; Re-initialize for buffer read
             jsr Buff2Byte       ; Convert 2 characters to a byte   
             bcc main_r          ; Fail if the byte couldn't be parsed
-            sta EFADDR+1        ; Save to the EFADDR high byte
+            sta W_ADDR+1        ; Save to the W_ADDR high byte
             jsr Buff2Byte       ; Convert next 2 characters to byte
             bcc main_r          ; Fail if the byte couldn't be parsed
-            sta EFADDR          ; Save to the EFADDR low byte
+            sta W_ADDR          ; Save to the W_ADDR low byte
 main_r:     rts                 ; Pull address-1 off stack and go there
    
 ; Return from Wedge
@@ -356,13 +356,13 @@ in_program: lda #$00            ; In a program, reset the keyboard buffer size
 DEF:        lda #T_DIS          ; Change the tool from $96 (DEF TOKEN)
             sta TOOL_CHR        ;   to Disassemble
             lda #$ef            ; Set the high byte to $EF
-            sta EFADDR+1        ; ,,
+            sta W_ADDR+1        ; ,,
             jsr ResetIn         ; Technically, the low byte of the start is the
             jsr Buff2Byte       ;   first byte on the command line.
-            sta EFADDR          ;   ,,
+            sta W_ADDR          ;   ,,
             ; Fall through to List
 
-List:       bcc list_cont       ; If no start address, continue list at EFADDR
+List:       bcc list_cont       ; If no start address, continue list at W_ADDR
             lda #$ff            ; Default range to top of memory
             sta RANGE_END       ; ,,
             sta RANGE_END+1     ; ,,
@@ -372,17 +372,17 @@ List:       bcc list_cont       ; If no start address, continue list at EFADDR
             jsr Buff2Byte       ;   ,,
             bcc start_list      ;   ,,
             sta RANGE_END       ;   ,,
-            cmp EFADDR
+            cmp W_ADDR
             lda RANGE_END+1
-            sbc EFADDR+1
+            sbc W_ADDR+1
             bcs lrange_ok
 lrange_bad: jmp list_r
 lrange_ok:  ldx #$80            ; When X=$80, list won't stop after LIST_NUM
             bne ListLine        ;   lines, but will go through range unless STOP
-list_cont:  lda C_PT            ; Otherwise, set the effective addresss to the
-            sta EFADDR          ;  Command Pointer to continue listing
+list_cont:  lda C_PT            ; Otherwise, set the working addresss to the
+            sta W_ADDR          ;  Command Pointer to continue listing
             lda C_PT+1          ;  after the last address
-            sta EFADDR+1        ;  ,,
+            sta W_ADDR+1        ;  ,,
 start_list: ldx #LIST_NUM       ; Default if no number has been provided
 ListLine:   txa
             pha
@@ -420,11 +420,11 @@ NextList:   jsr PrintBuff
             tax
             bpl skip_range      ; If X bit 7 is clear, don't check range
             inx                 ; Compensate for dex to keep bit 7 set
-            lda EFADDR+1        ; Check to see if we've gone beyond the
+            lda W_ADDR+1        ; Check to see if we've gone beyond the
             cmp RANGE_END+1     ;   specified range
             bcc skip_range      ;   ,,
             lda RANGE_END       ;   ,,
-            cmp EFADDR          ;   ,,
+            cmp W_ADDR          ;   ,,
             bcc list_stop       ; If so, end the list
 skip_range: jsr ISCNTC          ; Exit if STOP key is pressed
             beq list_stop       ; ,,          
@@ -445,7 +445,7 @@ list_stop:  lda #WEDGE          ; Provide a tool for the next page in the key-
             sta KEYBUFF+2       ;   ,,
             lda #$03            ;   ,,
             sta KBSIZE          ;   ,,
-            jsr EAtoCP          ; Update Command Pointer with effective addr
+            jsr Addr2CP         ; Update Command Pointer with working addr
 list_r:     jmp EnableBP        ; Re-enable breakpoint, if necessary
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -453,7 +453,7 @@ list_r:     jmp EnableBP        ; Re-enable breakpoint, if necessary
 ; https://github.com/Chysn/wAx/wiki/6502-Disassembler
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Disassemble
-; Disassemble a single instruction at the effective address
+; Disassemble a single instruction at the working address
 Disasm:     jsr IncAddr         ; Get opcode
             jsr Lookup          ; Look it up
             bcc Unknown         ; Clear carry indicates an unknown opcode
@@ -560,10 +560,10 @@ DisRel:     jsr HexPrefix
 sign:       sta WORK+1          ; Set the high byte to either $00 or $ff
             lda WORK            ; Calculate offset from next instructions
             clc                 ; ,,
-            adc EFADDR          ; ,,
+            adc W_ADDR          ; ,,
             sta WORK            ; ,,
             lda WORK+1          ; ,,
-            adc EFADDR+1        ; ,,
+            adc W_ADDR+1        ; ,,
             jsr Hex             ; No need to save the high byte, just show it
             lda WORK            ; Show the low byte of the computed address
             jmp Hex             ; ,,
@@ -595,7 +595,7 @@ start_mem:  ldy #$0             ; Byte index
             sei                 ; Stop interrupts during memory update
 -loop:      jsr Buff2Byte
             bcc edit_exit       ; Bail out on the first non-hex byte
-            sta (EFADDR),y      
+            sta (W_ADDR),y      
             iny
             cpy #8
             bne loop
@@ -642,7 +642,7 @@ non_qm:     bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
             bit main_r          ; BIT #$60. Check for control character and
             beq loop            ;   ignore control characters here
             jsr PETtoScr        ; Perform the conversion
-skip_conv:  sta (EFADDR),y      ; Populate data
+skip_conv:  sta (W_ADDR),y      ; Populate data
             iny
             cpy #$10            ; String size limit
             beq edit_exit
@@ -654,7 +654,7 @@ BinaryEdit: sta TOOL_CHR        ; Update tool character for prompt
             jsr BinaryByte      ; Get 8 binary bits
             ;bcc edit_r         ; If invalid, errors at BinaryByte
             ldy #$00            ; Store the valid byte to memory
-            sta (EFADDR),y      ; ,,
+            sta (W_ADDR),y      ; ,,
             iny                 ; Increment the byte count and return to
             jmp edit_exit       ;   editor            
 
@@ -694,19 +694,19 @@ main_op:    jsr GetOperand      ; Once $ is found, then grab the operand
 test:       jsr Hypotest        ; Line is done; hypothesis test for a match
             bcc asm_error       ; Clear carry means the test failed
             ldy #$00            ; A match was found! Transcribe the good code
-            lda OPCODE          ;   to the effective address. The number of
-            sta (EFADDR),y      ;   bytes to transcribe is stored in the
+            lda OPCODE          ;   to the working address. The number of
+            sta (W_ADDR),y      ;   bytes to transcribe is stored in the
             ldx INSTSIZE        ;   INTSIZE location.
             cpx #$02            ; Store the low operand byte, if indicated
             bcc nextline        ; ,,
             lda OPERAND         ; ,,
             iny                 ; ,,
-            sta (EFADDR),y      ; ,,
+            sta (W_ADDR),y      ; ,,
             cpx #$03            ; Store the high operand byte, if indicated
             bcc nextline        ; ,,
             lda OPERAND+1       ; ,,
             iny                 ; ,,
-            sta (EFADDR),y      ; ,,
+            sta (W_ADDR),y      ; ,,
 nextline:   jsr ClearBP         ; Clear breakpoint on successful assembly
             jsr Prompt          ; Prompt for next line if in direct mode
 asm_r:      rts
@@ -723,9 +723,9 @@ have_label: jsr IsDefined       ; If this label is not yet defined, then
             sty IDX_SYM         ;   was used
             jsr ResolveFwd      ;   ,,
             ldy IDX_SYM
-is_def:     lda EFADDR          ; Set the label address
+is_def:     lda W_ADDR          ; Set the label address
             sta SYMBOL_AL,y     ; ,,
-            lda EFADDR+1        ; ,,
+            lda W_ADDR+1        ; ,,
             sta SYMBOL_AH,y     ; ,,
             jsr CharGet
             cmp #$00
@@ -895,15 +895,15 @@ CopyOp:     lda OUTBUFFER       ; Get first hex digit of output buffer
 ; Hypothesis Test
 ; Search through the language table for each opcode and disassemble it using
 ; the opcode provided for the candidate instruction. If there's a match, then
-; that's the instruction to assemble at the effective address. If Hypotest tries
+; that's the instruction to assemble at the working address. If Hypotest tries
 ; all the opcodes without a match, then the candidate instruction is invalid.
 Hypotest:   jsr ResetLang       ; Reset language table
 reset:      ldy #$06            ; Offset disassembly by 6 bytes for buffer match   
             sty IDX_OUT         ;   b/c output buffer will be "$00AC INST"
-            lda #OPCODE         ; Write location to effective addr for hypotesting
-            sta EFADDR          ; ,,
-            ldy #$00            ; Set the effective address high byte
-            sty EFADDR+1        ; ,,
+            lda #OPCODE         ; Write location to working addr for hypotesting
+            sta W_ADDR          ; ,,
+            ldy #$00            ; Set the working address high byte
+            sty W_ADDR+1        ; ,,
             jsr NextInst        ; Get next instruction in 6502 table
             cmp #XTABLE_END     ; If we've reached the end of the table,
             beq bad_code        ;   the assembly candidate is no good
@@ -933,11 +933,11 @@ ch_accum:   lda #$09
             sta IDX_OUT
 run_match:  jsr IsMatch
             bcc reset
-match:      lda EFADDR          ; Set the INSTSIZE location to the number of
+match:      lda W_ADDR          ; Set the INSTSIZE location to the number of
             sec                 ;   bytes that need to be programmed
             sbc #OPCODE         ;   ,,
             sta INSTSIZE        ;   ,,
-            jmp RefreshEA       ; Restore the effective address to target addr
+            jmp RefreshEA       ; Restore the working address to target addr
 test_rel:   lda #$0a            ; For relative branch instructions, first check
             sta IDX_OUT         ;   the name of the instruction. If that checks
             jsr IsMatch         ;   out, compute the relative branch offset and
@@ -953,25 +953,25 @@ bad_code:   clc                 ; Clear carry flag to indicate failure
             rts
             
 ; Compute Relative Branch Offset
-; With branch instruction in EFADDR and target in OPERAND
+; With branch instruction in W_ADDR and target in OPERAND
 ; Return offset in Y if valid, or error message if too far
-ComputeRB:  lda EFADDR+1        ; Stash the effective address, as the offset
+ComputeRB:  lda W_ADDR+1        ; Stash the working address, as the offset
             pha                 ;   is computed from the start of the next
-            lda EFADDR          ;   instruction
+            lda W_ADDR          ;   instruction
             pha                 ;   ,,
-            jsr IncAddr         ; EFADDR += 2
+            jsr IncAddr         ; W_ADDR += 2
             jsr IncAddr         ; ,,
-            lda OPERAND         ; Subtract operand from effective address
+            lda OPERAND         ; Subtract operand from working address
             sec                 ;   to get offset
-            sbc EFADDR          ;   ,,
+            sbc W_ADDR          ;   ,,
             tay                 ;   ,, (Y will be the RB offset)
             lda OPERAND+1       ;   ,,
-            sbc EFADDR+1        ;   ,,
+            sbc W_ADDR+1        ;   ,,
             tax                 ;   ,,
-            pla                 ; Put back the tool's effective address
-            sta EFADDR          ; ,,
+            pla                 ; Put back the tool's working address
+            sta W_ADDR          ; ,,
             pla                 ; ,,
-            sta EFADDR+1        ; ,,
+            sta W_ADDR+1        ; ,,
             cpx #$ff            ; Check the range; the difference must be between
             beq neg             ;   $ff80 and $007f, inclusive
             cpx #$00            ;   ,,
@@ -998,7 +998,7 @@ Memory:     ldy #$00
             beq r_on
             lda #RVS_OFF
             jsr CharOut
-r_on:       lda (EFADDR),y
+r_on:       lda (W_ADDR),y
             sta CHARDISP,y
             jsr Hex
             iny
@@ -1064,25 +1064,25 @@ Tester:     bcc test_err        ; Error if no address
             jsr ShowAddr        ; ,,
             lda #":"            ; ,,
             jsr CharOut         ; ,,
-            lda (EFADDR),y      ; Show two values
+            lda (W_ADDR),y      ; Show two values
             jsr Hex             ;   ,,
             jsr Space           ;   separated by a space
             iny                 ;   ,,
-            lda (EFADDR),y      ;   ,,
+            lda (W_ADDR),y      ;   ,,
             jsr Hex             ;   ,,
             jmp PrintBuff       ;   ,,
 -loop:      jsr Buff2Byte
             bcc test_r          ; Bail out on the first non-hex byte
-add_test:   cmp (EFADDR),y
+add_test:   cmp (W_ADDR),y
             bne test_err      
             iny
             bne loop
-test_r:     tya                 ; Update effective address with number of
+test_r:     tya                 ; Update working address with number of
             clc                 ;   bytes tested, in order to update the
-            adc EFADDR          ;   Command Pointer
+            adc W_ADDR          ;   Command Pointer
             sta C_PT            ;   ,,
             lda #$00            ;   ,,
-            adc EFADDR+1        ;   ,,
+            adc W_ADDR+1        ;   ,,
             sta C_PT+1          ;   ,,
             jmp CPtoBASIC
 test_err:   jmp MisError
@@ -1092,9 +1092,9 @@ test_err:   jmp MisError
 ; https://github.com/Chysn/wAx/wiki/Subroutine-Execution
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Execute:    bcc iterate         ; No address was provided; continue from BRKpt
-            lda EFADDR          ; Set the temporary INT storage to the program
+            lda W_ADDR          ; Set the temporary INT storage to the program
             sta SYS_DEST        ;   counter. This is what SYS uses for its
-            lda EFADDR+1        ;   execution address, and I'm using that
+            lda W_ADDR+1        ;   execution address, and I'm using that
             sta SYS_DEST+1      ;   system to borrow saved Y,X,A,P values
             lda #>RegDisp-1     ; Add the register display return address to
             pha                 ;   the stack, as the return point after the
@@ -1156,15 +1156,15 @@ SetBreak:   php
             jsr ClearBP         ; Clear the old breakpoint, if it exists
             plp                 ; If no breakpoint is chosen (e.g., if B was
             bcc SetupVec        ;   by itself), just clear the breakpoint
-            lda EFADDR          ; Add a new breakpoint at the effective address
+            lda W_ADDR          ; Add a new breakpoint at the working address
             sta BREAKPOINT      ; ,,
-            lda EFADDR+1        ; ,,
+            lda W_ADDR+1        ; ,,
             sta BREAKPOINT+1    ; ,,
             ;ldy #$00           ; (Y is already 0 from ClearBP)
-            lda (EFADDR),y      ; Stash it in the Breakpoint data structure,
+            lda (W_ADDR),y      ; Stash it in the Breakpoint data structure,
             sta BREAKPOINT+2    ;   to be restored on the next break
             tya                 ; Write BRK to the breakpoint location
-            sta (EFADDR),y      ;   ,,
+            sta (W_ADDR),y      ;   ,,
             lda #CRSRUP         ; Cursor up to overwrite the command
             jsr CHROUT          ; ,,
             jsr DirectMode      ; When run inside a BASIC program, skip the
@@ -1227,17 +1227,17 @@ bp_reset:   sty BREAKPOINT      ; And then clear out the whole
 ; Breakpoint Indicator
 ; Also restores the breakpoint byte, temporarily
 BreakInd:   ldy #$00            ; Is this a BRK instruction?
-            lda (EFADDR),y      ; ,,
+            lda (W_ADDR),y      ; ,,
             bne ind_r           ; If not, do nothing
             lda BREAKPOINT      ; If it is a BRK, is it our breakpoint?
-            cmp EFADDR          ; ,,
+            cmp W_ADDR          ; ,,
             bne ind_r           ; ,,
             lda BREAKPOINT+1    ; ,,
-            cmp EFADDR+1        ; ,,
+            cmp W_ADDR+1        ; ,,
             bne ind_r           ; ,,
             jsr ReverseOn       ; Reverse on for the breakpoint
             lda BREAKPOINT+2    ; Temporarily restore the breakpoint byte
-            sta (EFADDR),y      ;   for disassembly purposes
+            sta (W_ADDR),y      ;   for disassembly purposes
 ind_r:      rts        
                  
 ; Enable Breakpoint
@@ -1268,7 +1268,7 @@ MemSave:    bcc save_err        ; Bail if the address is no good
             ldx #<INBUFFER+9    ; ,,
             ldy #>INBUFFER+9    ; ,,
             jsr SETNAM          ; ,,
-            lda #EFADDR         ; Set up SAVE call
+            lda #W_ADDR         ; Set up SAVE call
             ldx RANGE_END       ; ,,
             ldy RANGE_END+1     ; ,,
             jsr SAVE            ; ,,
@@ -1367,17 +1367,17 @@ Search:     bcc srch_r          ; Bail if the address is no good
             sta SEARCH_S        ; ,,
 next_srch:  jsr ISCNTC          ; Keep searching code until the user presses
             beq srch_stop       ;   Stop key
-            lda EFADDR+1        ; Store the effective address high byte for
+            lda W_ADDR+1        ; Store the working address high byte for
             pha                 ;   later comparison
             jsr ResetOut        ; Clear output buffer for possible result
             lda INBUFFER+4      ; What kind of search is this?
-            cmp #QUOTE          ; Character search
-            beq MemSearch       ; ,,
             cmp #":"            ; Convert a hex search into a character search
             beq SetupHex        ; ,,
-            bne CodeSearch      ; Default to code search
-check_end:  pla                 ; Has the effective address high byte advanced?
-            cmp EFADDR+1        ;   ,,
+            cmp #QUOTE          ; Character search
+            beq MemSearch       ; ,,
+            jmp CodeSearch      ; Default to code search
+check_end:  pla                 ; Has the working address high byte advanced?
+            cmp W_ADDR+1        ;   ,,
             beq next_srch       ; If not, continue the search
             dec SEARCH_C        ; If so, decrement the search counter, and
             bne next_srch       ;   end the search if it's done
@@ -1395,23 +1395,28 @@ srch_stop:  jsr ResetOut        ; Start a new output buffer to indicate the
             jsr CPtoBASIC       ; Update CP variable
 srch_r:     rts   
 
-; Code Search
-; Disassemble code from the effective address. If the disassembly at that
-; address matches the input, indicate the starting address of the match.
-CodeSearch: lda #T_DIS
-            jsr CharOut
-            jsr Space
+; Memory Search
+; Compare a sequence of bytes in memory to the input. If there's a match,
+; indicate the starting address of the match.            
+MemSearch:  ldy #0
+-loop:      lda INBUFFER+5,y
+            cmp (W_ADDR),y
+            bne no_match
+            iny
+            bne loop
+no_match:   ldx SEARCH_S
+            beq end_quote
+            cpy SEARCH_S
+            bcs mem_found
+            bcc next_check
+end_quote:  cmp #QUOTE          ; Is this the end of the search?
+            bne next_check
+mem_found:  jsr AddrPrefix
             jsr ShowAddr
-            jsr Semicolon       ; Adds comment so the disassembly works
-            jsr Disasm          ; Disassmble the code at the effective address
-            ldx #7              ; Change output offset for space, and enter
-            jsr IsMatch+2       ;   IsMatch after its LDX. If there's a match,
-            bcc check_end       ;   show the code
-            lda #WEDGE          ; Show prompt if there's a match
-            jsr CHROUT          ; ,,
-            jsr PrintBuff       ; Print address and disassembly   
-            jmp check_end       ; Go back for more      
-
+            jsr PrintBuff
+next_check: jsr IncAddr  
+            jmp check_end
+            
 ; Setup Hex Search
 ; by converting a hex search into a memory search. Transcribe hex characters
 ; into the input as values.       
@@ -1427,33 +1432,25 @@ SetupHex:   lda #QUOTE
             cpy #$08
             bne loop
 setup_done: sty SEARCH_S
-            jmp check_end 
-
-; Memory Search
-; Compare a sequence of bytes in memory to the input. If there's a match,
-; indicate the starting address of the match.            
-MemSearch:  ldy #0
--loop:      lda INBUFFER+5,y
-            cmp (EFADDR),y
-            bne no_match
-            iny
-            bne loop
-no_match:   ldx SEARCH_S
-            beq end_quote
-            cpy SEARCH_S
-            bcs mem_found
-            bcc next_check
-end_quote:  cmp #QUOTE          ; Is this the end of the search?
-            bne next_check
-mem_found:  jsr wAxPrompt   
-            lda #T_MEM
-            jsr CharOut
-            jsr Space      
+            jmp check_end    
+ 
+; Code Search
+; Disassemble code from the working address. If the disassembly at that
+; address matches the input, indicate the starting address of the match.
+CodeSearch: jsr AddrPrefix+3    ; Show address display convention, w/o prompt
             jsr ShowAddr
-            jsr PrintBuff
-next_check: jsr IncAddr  
+            lda #0
+            jsr CharOut
+            jsr Disasm          ; Disassmble the code at the working address
+            ldx #7              ; Change output offset for space, and enter
+            jsr IsMatch+2       ;   IsMatch after its LDX. If there's a match,
+            bcs code_found      ;   show the code
             jmp check_end
-                        
+code_found: lda #WEDGE          ; Show prompt if there's a match
+            jsr CHROUT          ; ,,
+            jsr PrintBuff       ; Print address and disassembly   
+            jmp check_end       ; Go back for more      
+      
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; COPY COMPONENTS
 ; https://github.com/Chysn/wAx/wiki/Copy-and-Fill
@@ -1473,15 +1470,15 @@ MemCopy:    bcc copy_err        ; Get parameters as 16-bit hex addresses for
             bcc copy_err        ; ,,
             sta C_PT            ; ,,
             ldx #$00            ; Copy memory from the start address...
--loop:      lda (EFADDR,x)      ; ,,
+-loop:      lda (W_ADDR,x)      ; ,,
             sta (C_PT,x)        ; ...To the target address
-            lda EFADDR+1        ; ,,
+            lda W_ADDR+1        ; ,,
             cmp RANGE_END+1     ; Have we reached the end of the copy range?
             bne advance         ; ,,
-            lda EFADDR          ; ,,
+            lda W_ADDR          ; ,,
             cmp RANGE_END       ; ,,
             beq copy_end        ; If so, leave the copy tool
-advance:    jsr IncAddr         ; If not, advance the effective address and the
+advance:    jsr IncAddr         ; If not, advance the working address and the
             jsr IncCP           ;   Command Pointer
             jmp loop            ;   and copy the next byte
 copy_end:   jsr IncCP           ; Advance Command Pointer
@@ -1496,20 +1493,20 @@ copy_err:   jmp SYNTAX_ERR      ; ?SYNTAX ERROR if invalid parameters
 Hex2Base10: jsr ResetIn         ; Reset input buffer
             jsr Buff2Byte
             bcc hex_conv_r      ; There's no byte available, so bail
-            sta EFADDR+1
+            sta W_ADDR+1
             jsr Buff2Byte
-            sta EFADDR
+            sta W_ADDR
             bcs two_bytes       ; There are two good bytes
-            lda EFADDR+1        ; If there's only one good byte, then
-            sta EFADDR          ;   treat that as a low byte, and make the
+            lda W_ADDR+1        ; If there's only one good byte, then
+            sta W_ADDR          ;   treat that as a low byte, and make the
             lda #$00            ;   high byte zero
-            sta EFADDR+1        ;   ,,
+            sta W_ADDR+1        ;   ,,
 two_bytes:  lda #WEDGE
             jsr CHROUT
             lda #"#"
             jsr CHROUT
-            ldx EFADDR          ; Set up PRTFIX for base-10 integer output
-            lda EFADDR+1        ; ,,
+            ldx W_ADDR          ; Set up PRTFIX for base-10 integer output
+            lda W_ADDR+1        ; ,,
             jsr PRTFIX          ; ,,
             jsr Linefeed
 hex_conv_r: rts            
@@ -1540,11 +1537,11 @@ b102h_r:    jmp PrintBuff
 ; Set Command Pointer
 SetCP:      lda #0              ; Reset forward reference overflow counter
             sta OVERFLOW_F      ; ,,
-            bcs EAtoCP          ; Do only that if no address provided
+            bcs Addr2CP         ; Do only that if no address provided
             rts
-EAtoCP:     lda EFADDR          ; Move effective address to Command Pointer
+Addr2CP:     lda W_ADDR          ; Move working address to Command Pointer
             sta C_PT            ; ,,
-            lda EFADDR+1        ; ,,
+            lda W_ADDR+1        ; ,,
             sta C_PT+1          ; ,,
             ; Fall through to CPtoBASIC
             
@@ -1650,13 +1647,13 @@ LabelList:  ldx #$00
 -loop:      txa                 ; Save the iterator from PrintBuff, etc.
             pha                 ; ,,
             tay                 ; ,,
-            lda SYMBOL_AL,y     ; Stash the current value in EFADDR
-            sta EFADDR          ; ,,
+            lda SYMBOL_AL,y     ; Stash the current value in W_ADDR
+            sta W_ADDR          ; ,,
             lda SYMBOL_AH,y     ; ,,
-            sta EFADDR+1        ; ,,
-            lda EFADDR          ; If this symbol is undefined (meaning, it is
+            sta W_ADDR+1        ; ,,
+            lda W_ADDR          ; If this symbol is undefined (meaning, it is
             bne show_label      ;   $0000, then skip it)
-            lda EFADDR+1        ;   ,,
+            lda W_ADDR+1        ;   ,,
             beq undefd          ; Undefined, but it might be a forward reference
 show_label: jsr LabListCo       ; Add elements common to both listed item
             jsr ShowAddr
@@ -1788,17 +1785,17 @@ get_admode: cmp #RELATIVE       ; If it's a relative branch instruction,
             cmp #IMPLIED        ; If an implied mode instruction is somehow
             bne load_immed      ;   being resolved, throw ASSEMBLY ERROR
             jmp CannotRes       ;   ,,
-load_abs:   lda EFADDR          ; For an absolute mode instruction, add the
+load_abs:   lda W_ADDR          ; For an absolute mode instruction, add the
             ldy #$01            ;   value of the reference to the existing
             clc                 ;   value of the operand, to account for
             adc (CHARAC),y      ;   arithmetic (+ or -) operations to the
             sta (CHARAC),y      ;   absolute address
             iny                 ;   ,,
-            lda EFADDR+1        ;   ,,
+            lda W_ADDR+1        ;   ,,
             adc (CHARAC),y      ;   ,,
             sta (CHARAC),y      ;   ,,
             jmp clear_back
-load_rel:   lda EFADDR          ; The target is the current effective address
+load_rel:   lda W_ADDR          ; The target is the current working address
             sec                 ; Subtract the reference address and add
             sbc CHARAC          ;   two to get the offset
             sec                 ;   ,,
@@ -1809,9 +1806,9 @@ load_rel:   lda EFADDR          ; The target is the current effective address
 load_immed: lda #$40            ; Check bit 6 of the label byte of the forward
             and SYMBOL_F,x      ;   reference symbol record. If it's set, it
             beq load_low        ;   means that the user wants the high byte
-            lda EFADDR+1        ;   of the symbol target
+            lda W_ADDR+1        ;   of the symbol target
             .byte $3c           ; Skip word
-load_low:   lda EFADDR          ; For other instructions, add the reference
+load_low:   lda W_ADDR          ; For other instructions, add the reference
             ldy #$01            ;   value to the existing address, to account
             clc                 ;   for arithmetic operations (+ and -)
             adc (CHARAC),y      ;   ,,
@@ -1826,10 +1823,10 @@ clear_back: lda #$00            ; Clear the forward reference table record for
 ; Offset 0 - Label Index OR %10000000
 AddFwdRec:  ldx #$00            ; Search the forward symbol table for a
 -loop:      lda SYMBOL_FL,x     ;   record in use with the same address.
-            cmp EFADDR          ;   If such a record is found, re-use it
+            cmp W_ADDR          ;   If such a record is found, re-use it
             bne next_used       ;   rather than searching the empty records
             lda SYMBOL_FH,x     ;   ,,
-            cmp EFADDR+1        ;   ,,
+            cmp W_ADDR+1        ;   ,,
             beq empty_rec       ;   ,,
 next_used:  inx                 ;   ,,
             cpx #MAX_FWD        ;   ,,
@@ -1852,9 +1849,9 @@ empty_rec:  tya
             bne store_rec       ;   on resolution, by setting bit 6 of the
             ora #$40            ;   symbol forward label entry
 store_rec:  sta SYMBOL_F,x      ; Store the label index in the record
-            lda EFADDR          ; Store the current effective address in the
+            lda W_ADDR          ; Store the current working address in the
             sta SYMBOL_FL,x     ;   forward reference record for (hopefully)
-            lda EFADDR+1        ;   later resolution
+            lda W_ADDR+1        ;   later resolution
             sta SYMBOL_FH,x     ;   ,,
 addfwd_r:   rts
 set_ur:     lda #"U"+$80        ; During BASIC operation, set UR% to the
@@ -1875,20 +1872,20 @@ set_ur:     lda #"U"+$80        ; During BASIC operation, set UR% to the
 ; https://github.com/Chysn/wAx/wiki/Change-BASIC-Stage
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 BASICStage: jsr ResetIn         ; Reset the input buffer index
-            sta EFADDR          ; Set default end page
+            sta W_ADDR          ; Set default end page
             jsr Buff2Byte       ; Get the first hex byte
             bcc st_range        ; If no valid address was provided, show range
-            sta EFADDR+1        ; This is the stage's starting page number
+            sta W_ADDR+1        ; This is the stage's starting page number
             jsr Buff2Byte       ; But the default can be overridden if a valid
             bcc ch_length       ;   starting page is provided
-            sta EFADDR          ;   ,,
-ch_length:  lda EFADDR+1        ; Make sure that the ending page isn't lower
-            cmp EFADDR          ;   in memory than the starting page. If it is,
+            sta W_ADDR          ;   ,,
+ch_length:  lda W_ADDR+1        ; Make sure that the ending page isn't lower
+            cmp W_ADDR          ;   in memory than the starting page. If it is,
             bcc set_ptrs        ;   default the stage size to 3.5K
             clc                 ;   ,,
             adc #$0e            ;   ,,
-            sta EFADDR          ;   ,,
-set_ptrs:   lda EFADDR+1        ; Set up the BASIC start and end pointers
+            sta W_ADDR          ;   ,,
+set_ptrs:   lda W_ADDR+1        ; Set up the BASIC start and end pointers
             sta $2c             ;   and stuff
             sta $2e             ;   ,,
             sta $30             ;   ,,
@@ -1902,11 +1899,11 @@ set_ptrs:   lda EFADDR+1        ; Set up the BASIC start and end pointers
             lda #$00            ;   ,,
             sta $33             ;   ,,
             sta $37             ;   ,,
-            lda EFADDR          ;   ,,
+            lda W_ADDR          ;   ,,
             sta $34             ;   ,,
             sta $38             ;   ,,
             ldy #$00            ; Clear the low byte. From here on out, we're     
-            sty EFADDR          ;   dealing with the start of the BASIC stage
+            sty W_ADDR          ;   dealing with the start of the BASIC stage
             ldy #$00            ; Look through the input buffer for an "N"
 -loop:      lda INBUFFER,y      ;   character. This indicates that it is a
             beq finish          ;   new stage.
@@ -1918,7 +1915,7 @@ set_ptrs:   lda EFADDR+1        ; Set up the BASIC start and end pointers
             beq finish          ;   program
 new:        lda #$00            ; Zero out the first few bytes of the stage so
             ldy #$02            ;   that it looks like a NEW program. I'm not
--loop:      sta (EFADDR),y      ;   using BASIC's NEW at $c642 because it does
+-loop:      sta (W_ADDR),y      ;   using BASIC's NEW at $c642 because it does
             dey                 ;   not store $00 at the page boundary, which
             bpl loop            ;   causes problems.
 finish:     jsr Rechain
@@ -2106,17 +2103,17 @@ Start:      jsr StartLine       ; Start address line
             inc RANGE_END       ; Increase the range by 1 for
             bne compare         ;   the comparison
             inc RANGE_END+1     ;   ,,
-compare:    lda EFADDR+1        ; Is the effective address in 
+compare:    lda W_ADDR+1        ; Is the working address in 
             cmp RANGE_END+1     ;   the compare range?
             bcc in_range        ;   ,,
-            lda EFADDR          ;   ,,
+            lda W_ADDR          ;   ,,
             cmp RANGE_END       ;   ,,
             bcc in_range        ; If so, check for byte match
 done:       jsr Toggle          ; Toggle to show the right color
             jsr EndLine         ; Show the last result count
             rts                 ; Done!
 in_range:   ldx #$00            ; Compare EA to CP
-            lda (EFADDR,x)      ; ,,
+            lda (W_ADDR,x)      ; ,,
             cmp (C_PT,x)        ; ,,
             bne differs
 matches:    lda STATUS          ; If the byte matches, and the previous byte
@@ -2413,22 +2410,32 @@ Buff2Byte:  jsr CharGet
             ;sec                ; Set Carry flag indicates success
 buff2_r:    rts
             
-; Increment Effective Address
+; Increment Working Address
 ; Get the EA byte and advance EA by one
 IncAddr:    ldx #$00
-            lda (EFADDR,x)
-            inc EFADDR
+            lda (W_ADDR,x)
+            inc W_ADDR
             bne next_r
-            inc EFADDR+1
+            inc W_ADDR+1
 next_r:     rts
 
 ; Incremenet Command Pointer
 IncCP:      inc C_PT 
             bne pc_r 
             inc C_PT+1
-pc_r:       rts 
+pc_r:       rts
+
+; Address Display
+; For address-only displays, like the kids you'd find in searches and
+; statuses, they should begin with a semicolon, and then a space,
+; and then the address. This shows the semicolon and the space
+AddrPrefix: jsr wAxPrompt
+            jsr Semicolon
+            ; Fall through to Space
 
 ; Commonly-Used Characters
+Space:      lda #" "
+            .byte $3c           ; TOP (skip word)
 Semicolon:  lda #";"            
             .byte $3c           ; TOP (skip word)
 ReverseOn:  lda #RVS_ON
@@ -2436,8 +2443,6 @@ ReverseOn:  lda #RVS_ON
 CloseParen: lda #")"
             .byte $3c           ; TOP (skip word)
 Comma:      lda #","
-            .byte $3c           ; TOP (skip word)
-Space:      lda #" "
             .byte $3c           ; TOP (skip word)
 HexPrefix:  lda #"$"
             .byte $3c           ; TOP (skip word)
@@ -2459,6 +2464,7 @@ CharOut:    sta CHARAC          ; Save temporary character
             tax                 ; ,,
             pla                 ; ,,
             tay                 ; ,,
+            lda CHARAC          ; ,,
 write_r:    rts             
             
 ; Write hexadecimal character
@@ -2500,11 +2506,11 @@ next_bit:   pla
             rts
 bad_bin:    jmp AsmError
  
-; Show Effective Address
-; 16-bit hex address at effective address          
-ShowAddr:   lda EFADDR+1
+; Show Working Address
+; 16-bit hex address at working address          
+ShowAddr:   lda W_ADDR+1
             jsr Hex
-            lda EFADDR
+            lda W_ADDR
             jmp Hex 
 
 ; Show Command Pointer
@@ -2532,8 +2538,10 @@ Param_16:   jsr HexPrefix
 ; Replace 'V with hex(V)            
 InterpVar:  lda TOOL_CHR        ; If the interpolation is in the Assemble
             cmp #T_ASM          ;   tool, as an operand, add the $ in
-            bne get_var         ;   front of the hex digits.
-            lda IDX_IN          ;   If the target address is being inter-
+            beq add_hexsig      ;   front of the hex digits.
+            cmp #T_SRC          ; Same with code search
+            bne get_var         ; ,,
+add_hexsig: lda IDX_IN          ;   If the target address is being inter-
             cmp #4              ;   polated, then don't add the $
             bcc get_var         ;   ,,
             lda #"$"            ;   ,,
@@ -2717,14 +2725,14 @@ PrintStr:   sta CHARAC
 print_r:    rts            
             
 ; Prompt for Next Line
-; X should be set to the number of bytes the effective address should be
+; X should be set to the number of bytes the working address should be
 ; advanced
 Prompt:     txa                 ; Based on the incoming X register, advance
             clc                 ;   the effecive address and store in the
-            adc EFADDR          ;   Command Pointer. This is how wAx
+            adc W_ADDR          ;   Command Pointer. This is how wAx
             sta C_PT            ;   remembers where it was
             lda #$00            ;   ,,
-            adc EFADDR+1        ;   ,,
+            adc W_ADDR+1        ;   ,,
             sta C_PT+1          ;   ,,
             jsr CPtoBASIC       ;   Set the CP variable in BASIC
             jsr ResetOut        ; Reset the output buffer to generate the prompt
@@ -2857,8 +2865,7 @@ Intro:      .asc LF," ",$b0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
 Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0
             .asc "P",$c0,$c0,"S",$c0,$c0,"PC",$c0,$c0,LF,".",";",$00
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc LF,"HELP",LF,LF
-            .asc "D 6502 DIS E 6502+EXT",LF
+HelpScr1:   .asc LF,"D 6502 DIS E 6502+EXT",LF
             .asc "A ASSEMBLE R REGISTER",LF
             .asc "G GO       B BRKPOINT",LF
             .asc "R MEMORY   I TEXT",LF
@@ -2868,8 +2875,8 @@ HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
             .asc "L LOAD     S SAVE",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
-            .asc "P PLUG-INS U INVOKE",LF
-            .asc "X EXIT     ? THIS",LF,$00
+            .asc "P INSTALL  U PLUG-IN",LF
+            .asc "X EXIT",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
@@ -3260,7 +3267,7 @@ uwAxfer:    jmp ph_waxfer
 ph_waxfer:  bcc ch_pk           ; If no address is provided, check for T
             lda #2              ; Set header as though the header has already
             sta HEADER          ;   been read
-            jsr EAtoCP          ; Program counter will be start of memory
+            jsr Addr2CP         ; Program counter will be start of memory
             lsr TERMMODE        ; Set PRG mode
             jmp setup           ; Continue to hardware setup
 ch_pk:      lda #0              ; Header byte count clear
@@ -3299,7 +3306,7 @@ ch_stop:    jsr ISCNTC          ; Check for STOP key
             bit RECEIVED        ; If data receive flag is off, just wait
             bpl wait            ; ,,
             lsr RECEIVED        ; Turn the flag off
-            lda EFADDR          ; Are we at a multiple of 256 bytes?
+            lda W_ADDR          ; Are we at a multiple of 256 bytes?
             bne wait            ;   If not, wait
             jsr ProgHead        ; Show progress header        
             jsr ShowAddr        ; Show address during transfer
@@ -3323,10 +3330,7 @@ comp_r:     jmp (READY)
 
 ; Show Progress Header
 ProgHead:   jsr ResetOut        ; Show final locations...
-            jsr wAxPrompt       ;    wAx prompt
-            lda #T_DIS          ;    Disassemble tool
-            jsr CharOut         ;    ,,
-            jmp Space
+            jmp AddrPrefix      ; Show address prefix
   
 ; Interrupt Service Routine
 ; Handles NMI Interrupt triggered by CB2 high-to-low transition                                  
@@ -3345,18 +3349,18 @@ recv:       lda UPORT           ; Get the User Port byte
             ldx HEADER          ; Get current header count
             cpx #2              ; If both header bytes have been received,
             beq prg             ;   handle PRG data
-            sta EFADDR,x        ; Otherwise, store header bytes in effective
+            sta W_ADDR,x        ; Otherwise, store header bytes in working
             sta C_PT,x          ;   address and Command Pointer
             inc HEADER          ; Advance header
             bne ser_r           ; Return from interrupt
 prg:        ldx #0              ; Store PRG data byte in current location
-            sta (EFADDR,x)      ; ,,
+            sta (W_ADDR,x)      ; ,,
             stx TIMER           ; Reset time since last byte
             sec                 ; Set byte received flag for caller
             ror RECEIVED        ; ,,
             sec                 ; Set when first data is received
             ror RUNNING         ; ,,
-next_addr:  jsr IncAddr         ; Increment effective address
+next_addr:  jsr IncAddr         ; Increment working address
             jmp RFI             ; Return from interrupt
 term_h:     cmp #10             ; Ignore ASCII LF
             beq ser_r           ; ,,
@@ -3376,7 +3380,7 @@ ser_r:      jmp RFI             ; Return from the User Port interrupt
 ; Relocate Workspace
 SRC_END     = $0247             ; End of source range (2 bytes)
 DEST_END    = $0249             ; End of destination range (2 bytes)
-OFFSET      = $024b             ; Offset (C_PT - EFADDR, 2 bytes)
+OFFSET      = $024b             ; Offset (C_PT - W_ADDR, 2 bytes)
 -OPERAND    = $024d             ; Instruction operand (2 bytes)           
 
             ; Parameter collection
@@ -3396,11 +3400,11 @@ okay:       jsr Buff2Byte       ; Get high byte of source end
             jsr Buff2Byte       ; Get low byte of destination start
             bcc error           ; ,,
             sta C_PT            ; ,,
-            sec                 ; Calculate default offset (C_PT - EFADDR)
-            sbc EFADDR          ;   This is initially used to calculate an
+            sec                 ; Calculate default offset (C_PT - W_ADDR)
+            sbc W_ADDR          ;   This is initially used to calculate an
             sta OFFSET          ;   end-of-destination address, but both end-of-
             lda C_PT+1          ;   destination and offset can be overridden by
-            sbc EFADDR+1        ;   additional optional 16-bit parameters.
+            sbc W_ADDR+1        ;   additional optional 16-bit parameters.
             sta OFFSET+1        ;   ,,
             lda OFFSET          ; Calculate default end-of-destination 
             clc                 ;   address, for checking the end of the
@@ -3432,11 +3436,11 @@ Relocate:   ldy #0              ; Load instruction opcode
             iny                 ; 3 bytes - Something to potentially update.
             lda (C_PT),y        ;   Grab the operand from the two bytes after
             sta OPERAND         ;   the opcode...
-            cmp EFADDR          ;   ,,            
+            cmp W_ADDR          ;   ,,            
             iny                 ;   ,,
             lda (C_PT),y        ;   ,,
             sta OPERAND+1       ;   ,,
-            sbc EFADDR+1        ; ...then check whether the range of the operand
+            sbc W_ADDR+1        ; ...then check whether the range of the operand
             bcc rnext           ;   is within the original code range
             lda OPERAND         ;   ,,
             cmp SRC_END         ;   ,,
@@ -3452,8 +3456,7 @@ Relocate:   ldy #0              ; Load instruction opcode
             adc OFFSET+1        ;   ,,
             sta (C_PT),y        ;   ,,
             jsr ResetOut        ; Show list of changed addresses
-            lda #'.'            ; ,,
-            jsr CharOut         ; ,,
+            jsr AddrPrefix      ; ,,
             jsr ShowCP          ; ,,
             jsr PrintBuff       ; ,,
             ldx #$03            ; ,, (reset X back to 3 for incrementing C_PT)
@@ -3481,20 +3484,20 @@ BREAKPT     = KNAPSACK+10       ; Breakpoint address (2 bytes)
 KNAPSIZE    = BREAKPT+2         ; Knapsack size (1 byte)
 
 ; Main routine entry point
-; * If setting a breakpoint, its address is in EFADDR vector
+; * If setting a breakpoint, its address is in W_ADDR vector
 ; * If clearing a breakpoint, the Carry flag is clear
 uDebug:     jmp ph_debug
             .asc $00,".U ADDR              ",$00 
 ph_debug:   bcs NewKnap         ; A legal address has been provided in $a6/$a7
 restore:    lda BREAKPT         ; Otherwise, restore the breakpoint to the
-            sta EFADDR          ;   original code by copying the
+            sta W_ADDR          ;   original code by copying the
             lda BREAKPT+1       ;   bytes in the knapsack back to the code
-            sta EFADDR+1        ;   ,,
+            sta W_ADDR+1        ;   ,,
             ldy KNAPSIZE        ; Get knapsack code size (3-5, or 0)
             beq restore_r       ; Don't restore if KNAPSIZE isn't set
             dey
 -loop       lda KNAPSACK+2,y    ; Move between 3 and 5 bytes back
-            sta (EFADDR),y      ;   to their original locations
+            sta (W_ADDR),y      ;   to their original locations
             dey                 ;   ,,
             bpl loop            ;   ,,
             lda #$00            ; Reset the knapsack size so that doing it again
@@ -3502,7 +3505,7 @@ restore:    lda BREAKPT         ; Otherwise, restore the breakpoint to the
 restore_r:  rts                 ;   ,,
 
 ; New Knapsack
-; Generate a new knapsack at the effective address
+; Generate a new knapsack at the working address
 NewKnap:    lda KNAPSIZE        ; Don't install a knapsack if there's already
             bne knap_r          ;   one installed
             ldy #$00            ; (BRK)
@@ -3511,46 +3514,46 @@ NewKnap:    lda KNAPSIZE        ; Don't install a knapsack if there's already
             sta KNAPSACK+1      ; ,,
 next_inst:  tya                 ; Preserve Y against SizeLookup
             pha                 ; ,,
-            lda (EFADDR),y      ; A = Opcode of the breakpoint instruction
+            lda (W_ADDR),y      ; A = Opcode of the breakpoint instruction
             jsr SizeLookup      ; X = Size of instruction (1-3)
             pla
             tay
             bcs xfer            ; Error if branch or unknown instruction
             jmp UND_ERROR        ; ?UNDEF'D STATEMENT ERROR     
-xfer:       lda (EFADDR),y      ; Move X bytes starting at Y index
+xfer:       lda (W_ADDR),y      ; Move X bytes starting at Y index
             sta KNAPSACK+2,y    ; Y is a running count of knapsacked bytes
             iny                 ; ,,
             dex                 ; ,,
             bne xfer            ; ,,
             cpy #$03            ; If at least three bytes have been knapsacked
             bcc next_inst       ;   we're done
-            lda EFADDR          ; Stash pointer in breakpoint storage for
+            lda W_ADDR          ; Stash pointer in breakpoint storage for
             sta BREAKPT         ;   later restoration
-            lda EFADDR+1        ;   ,,
+            lda W_ADDR+1        ;   ,,
             sta BREAKPT+1       ;   ,,
             sty KNAPSIZE        ; Save knapsack size for later
             lda #$ea            ; (NOP)
 -loop:      cpy #$03            ; Pad code with more than three bytes with
             beq add_kjmp        ;   NOPs after the first three
             dey                 ;   ,,
-            sta (EFADDR),y      ;   ,,
+            sta (W_ADDR),y      ;   ,,
             bne loop            ;   ,,
 add_kjmp:   ldy #$00
             lda #$4c            ; (JMP) This is the JMP to the knapsack
-            sta (EFADDR),y      ; 
+            sta (W_ADDR),y      ; 
             lda #<KNAPSACK      ; Store knapsack JMP low byte
             iny                 ; ,,
-            sta (EFADDR),y      ; ,,
+            sta (W_ADDR),y      ; ,,
             lda #>KNAPSACK      ; Store knapsack JMP high byte
             iny                 ; ,,
-            sta (EFADDR),y      ; ,,
+            sta (W_ADDR),y      ; ,,
             lda KNAPSIZE        ; Calculate the return jump point (original
             tay                 ;   address + Y)
             clc                 ;   ,,
-            adc EFADDR          ;   ,,
+            adc W_ADDR          ;   ,,
             sta KNAPSACK+3,y    ; Store return JMP low byte
             lda #$00
-            adc EFADDR+1 
+            adc W_ADDR+1 
             sta KNAPSACK+4,y    ; Store return JMP high byte
             lda #$4c            ; (JMP) This is the JMP to the return point        
             sta KNAPSACK+2,y    ; ,,
@@ -3801,8 +3804,8 @@ mnext_r:    rts
          
 ; Check Relative Instruction
 ; for relocatable byte syntax            
-CheckRel:   ldx #$00            ; Check the instruction at the effective address
-            lda (EFADDR,x)      ; ,,
+CheckRel:   ldx #$00            ; Check the instruction at the working address
+            lda (W_ADDR,x)      ; ,,
             jsr Lookup          ; If it doesn't exist, exit
             bcc clc_r           ; ,,
             cmp #$c0            ; Is the instruction relative mode?
@@ -3824,10 +3827,10 @@ CheckRel:   ldx #$00            ; Check the instruction at the effective address
 ; Check to see if C_PT is greater than or equal to Range End  
 ; In range is Carry is clear; out of range if Carry is set    
 mChRange:   lda RANGE_END+1
-            cmp EFADDR+1
+            cmp W_ADDR+1
             bcc out_range
             bne min_range
-            lda EFADDR
+            lda W_ADDR
             cmp RANGE_END
             rts
 out_range:  sec
@@ -3864,7 +3867,7 @@ cgnext:     iny
             bne check
 output:     ldy #$00
             lda CURBYTE
-            sta (EFADDR),y
+            sta (W_ADDR),y
             jsr IncAddr
             lda $07
             cmp #$9a
@@ -3961,10 +3964,10 @@ ch_cmd:     cmp #5              ; Minus - Octave Down
             lda #$00            ; Clear the keyboard buffer so it doesn't
             sta $c6             ;   flush to the screen on exit
             ldx #$00            ; Add $00 to indicate end-of-score
-            sta (EFADDR,x)      ; ,,
+            sta (W_ADDR,x)      ; ,,
             jsr ShowData        ; ,,
-            jsr IncAddr         ; Increment effective address
-            jmp EAtoCP          ; Update the Command Pointer and exit
+            jsr IncAddr         ; Increment working address
+            jmp Addr2CP         ; Update the Command Pointer and exit
 ; Add an effect placeholder or effect command        
 effect:     lda #$0f            ; Enter an effect placeholder into memory
             .byte $3c           ; TOP (skip word)
@@ -3997,13 +4000,13 @@ dot:        lda DURATION        ; Take the current duration
 ; Add a note            
 add_note:   ora DURATION
             ldx #$00
-            sta (EFADDR,x)
+            sta (W_ADDR,x)
             jsr ShowData        ; Show note data
             jsr PlayNote        ; Play the note at the selected duration
             lda #$00            ; Turn off the voice
             sta VOICE           ; ,,
             jsr IncAddr         ; Increment the address
-            jsr EAtoCP          ; Update the Command Pointer and go back
+            jsr Addr2CP         ; Update the Command Pointer and go back
             jmp loop
 
 ; Simple wAxScore player
@@ -4012,7 +4015,7 @@ Player:     lsr RECORD          ; Turn off recording flag
             jsr PlayNote        ; Play it
             php
             jsr IncAddr         ; Increment the address
-            jsr EAtoCP          ;   ,,
+            jsr Addr2CP         ;   ,,
             plp
             bcc player_r        ; If end-of-score marker, then end
             lda $c5             ; Check STOP key
@@ -4025,18 +4028,18 @@ player_r:   lda #$00            ; Turn off the playing voice
     
 ; Undo        
 ; Go back to previous note to correct it                        
-Undo:       lda EFADDR
+Undo:       lda W_ADDR
             sec
             sbc #$01
-            sta EFADDR
+            sta W_ADDR
             bcs show_prev
-            dec EFADDR+1
+            dec W_ADDR+1
 show_prev:  jsr ResetOut        ; Show the previous address to verify undo
             lda #"U"            ;   action
             jsr CharOut         ;   ,,
             jsr ShowAddr        ;   ,,
             jsr PrintBuff       ;   ,,
-            jsr EAtoCP
+            jsr Addr2CP
             jmp loop                       
  
 ; Get Key
@@ -4086,7 +4089,7 @@ Delay:      ldy $c5
             lda #$00            ; Turn off the voice
             sta VOICE           ; ,,
             jsr IncAddr         ; Increment the address
-            jsr EAtoCP          ; Update the Command Pointer
+            jsr Addr2CP         ; Update the Command Pointer
             pla                 ; Get back the last key pressed, and process
             jmp proc_key        ;   new key as a command
 ch_time:    cmp TIMER
@@ -4094,11 +4097,11 @@ ch_time:    cmp TIMER
             rts
 
 ; Play Note
-; At the effective address
+; At the working address
 ; Set Carry if the note was played successfully
 ; Clear Carry if this is the end of the score
 PlayNote:   ldx #$00
-            lda (EFADDR,x)
+            lda (W_ADDR,x)
             beq end_score
             pha
             and #$0f            ; Mask away the duration
@@ -4161,7 +4164,7 @@ ch_leg_off: cmp #$40            ; Legato Off
             jmp play_r        
 
 ; Show Note Data
-; At the effective address
+; At the working address
 ShowData:   jsr ResetOut        ; Show the data as it's entered
             lda #"@"            ;   as a wAx data entry command
             jsr CharOut         ;   ,,
@@ -4169,7 +4172,7 @@ ShowData:   jsr ResetOut        ; Show the data as it's entered
             lda #":"            ;   ,,
             jsr CharOut         ;   ,,
             ldx #$00            ;   ,,
-            lda (EFADDR,x)      ;   ,,
+            lda (W_ADDR,x)      ;   ,,
             jsr Hex             ;   ,,
             jmp PrintBuff       ;   ,,
     
