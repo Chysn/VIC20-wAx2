@@ -212,10 +212,10 @@ BREAKPOINT  = $0256             ; Breakpoint data (3 bytes)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; This JMP table starts at $a000
 jInstall:   jmp Install         ; a000
-jBuff2Byte: jmp Buff2Byte       ; a003
+jHexGet:    jmp HexGet          ; a003
 jCharGet:   jmp CharGet         ; a006
 jCharOut:   jmp CharOut         ; a009
-jHex:       jmp Hex             ; a00c
+jHexOut:    jmp HexOut          ; a00c
 jIncAddr:   jmp IncAddr         ; a00f
 jIncCP:     jmp IncCP           ; a012
 jLookup:    jmp Lookup          ; a015
@@ -319,10 +319,10 @@ Prepare:    sta TOOL_CHR        ; Store the tool character
             lda #$ef            ; $0082 BEQ $008a -> BEQ $0073 (maybe)
             sta $83             ; ,,
 RefreshEA:  jsr ResetIn         ; Re-initialize for buffer read
-            jsr Buff2Byte       ; Convert 2 characters to a byte   
+            jsr HexGet          ; Convert 2 characters to a byte   
             bcc main_r          ; Fail if the byte couldn't be parsed
             sta W_ADDR+1        ; Save to the W_ADDR high byte
-            jsr Buff2Byte       ; Convert next 2 characters to byte
+            jsr HexGet          ; Convert next 2 characters to byte
             bcc main_r          ; Fail if the byte couldn't be parsed
             sta W_ADDR          ; Save to the W_ADDR low byte
 main_r:     rts                 ; Pull address-1 off stack and go there
@@ -358,7 +358,7 @@ DEF:        lda #T_DIS          ; Change the tool from $96 (DEF TOKEN)
             lda #$ef            ; Set the high byte to $EF
             sta W_ADDR+1        ; ,,
             jsr ResetIn         ; Technically, the low byte of the start is the
-            jsr Buff2Byte       ;   first byte on the command line.
+            jsr HexGet          ;   first byte on the command line.
             sta W_ADDR          ;   ,,
             ; Fall through to List
 
@@ -366,10 +366,10 @@ List:       bcc list_cont       ; If no start address, continue list at W_ADDR
             lda #$ff            ; Default range to top of memory
             sta RANGE_END       ; ,,
             sta RANGE_END+1     ; ,,
-            jsr Buff2Byte       ; 
+            jsr HexGet          ; 
             bcc start_list      ; If an optional end address is provided, set
             sta RANGE_END+1     ;   the end-of-range address
-            jsr Buff2Byte       ;   ,,
+            jsr HexGet          ;   ,,
             bcc start_list      ;   ,,
             sta RANGE_END       ;   ,,
             cmp W_ADDR
@@ -470,7 +470,7 @@ disasm_op:  pla                 ; Pass addressing mode to operand routine
 Unknown:    lda #":"            ; Memory entry before an unknown byte
             jsr CharOut         ; ,,
             lda OPCODE          ; The unknown opcode is still here   
-            jmp Hex             
+            jmp HexOut             
             
 ; Mnemonic Display
 DMnemonic:  lda MNEM+1          ; These locations are going to rotated, so
@@ -564,9 +564,9 @@ sign:       sta WORK+1          ; Set the high byte to either $00 or $ff
             sta WORK            ; ,,
             lda WORK+1          ; ,,
             adc W_ADDR+1        ; ,,
-            jsr Hex             ; No need to save the high byte, just show it
+            jsr HexOut          ; No need to save the high byte, just show it
             lda WORK            ; Show the low byte of the computed address
-            jmp Hex             ; ,,
+            jmp HexOut          ; ,,
                             
 ; Disassemble Absolute Operand           
 DisAbs:     pha                 ; Save addressing mode for use later
@@ -593,7 +593,7 @@ abs_ind:    jsr Comma           ; This is an indexed addressing mode, so
 MemEdit:    sta TOOL_CHR        ; Update tool character for Prompt
 start_mem:  ldy #$0             ; Byte index
             sei                 ; Stop interrupts during memory update
--loop:      jsr Buff2Byte
+-loop:      jsr HexGet   
             bcc edit_exit       ; Bail out on the first non-hex byte
             sta (W_ADDR),y      
             iny
@@ -802,7 +802,7 @@ insert_hex: jsr ResetOut        ; Store the hex value of the operand after the
             lda #"$"            ;   End it with 0 as a line delimiter
             sta INBUFFER+8      ;   ,,
             lda OPERAND         ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             lda OUTBUFFER       ;   ,,
             sta INBUFFER+9      ;   ,,
             lda OUTBUFFER+1     ;   ,,
@@ -833,10 +833,10 @@ GetOperand: lda IDX_IN          ; Save starting index for arithmetic conversion
             sta PREV_IDX        ; ,,
             lda #1              ; Operand size-1 for arithmetic conversion
             sta INSTSIZE        ; ,,
-            jsr Buff2Byte       ; Get the first byte
+            jsr HexGet          ; Get the first byte
             bcc getop_r         ; If invalid, return
             sta OPERAND+1       ; Default to being high byte
-            jsr Buff2Byte
+            jsr HexGet   
             bcs high_byte       ; If an 8-bit operand is provided, the first
             lda OPERAND+1       ;   byte is the low byte
             dec INSTSIZE        ; Set to 0 if only one operand byte
@@ -878,11 +878,11 @@ repl_hex:   dec IDX_IN          ; Set the index of the operator and its
             lda INSTSIZE        ; If only one byte was provided (INSTSIZE=0),
             beq pl1             ;   then update only the low byte (OPERAND)
             lda OPERAND+1       ; Otherwise, there are two bytes, so start by
-            jsr Hex             ;   updating the high byte
+            jsr HexOut          ;   updating the high byte
             jsr CopyOp          ;   ,,
             jsr ResetOut        ; Same as above, reset the output buffer, which
 pl1:        lda OPERAND         ;   holds the hex value of the low byte
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             ; Fall through to CopyOp
  
 ; Copy Hex
@@ -1000,7 +1000,7 @@ Memory:     ldy #$00
             jsr CharOut
 r_on:       lda (W_ADDR),y
             sta CHARDISP,y
-            jsr Hex
+            jsr HexOut
             iny
             cpy #$04
             beq show_char
@@ -1047,7 +1047,7 @@ is_zero:    lda #"0"
             bne loop
             jsr Space
             pla
-            jmp Hex
+            jmp HexOut
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; ASSERTION TESTER COMPONENT
@@ -1055,7 +1055,7 @@ is_zero:    lda #"0"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Tester:     bcc test_err        ; Error if no address
             ldy #$00            ; Start with 0 index
-            jsr Buff2Byte       ; Is there a byte after the address?
+            jsr HexGet          ; Is there a byte after the address?
             bcs add_test        ; If so, insert it into the test, look for more
             jsr ResetOut        ; If there's only an address, show the value
             jsr wAxPrompt       ; Show values in an editor command     
@@ -1065,13 +1065,13 @@ Tester:     bcc test_err        ; Error if no address
             lda #":"            ; ,,
             jsr CharOut         ; ,,
             lda (W_ADDR),y      ; Show two values
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             jsr Space           ;   separated by a space
             iny                 ;   ,,
             lda (W_ADDR),y      ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             jmp PrintBuff       ;   ,,
--loop:      jsr Buff2Byte
+-loop:      jsr HexGet   
             bcc test_r          ; Bail out on the first non-hex byte
 add_test:   cmp (W_ADDR),y
             bne test_err      
@@ -1112,16 +1112,16 @@ iterate:    pla                 ; Remove return to Return from the stack; it
 ; https://github.com/Chysn/wAx/wiki/Register-Editor
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Register:   jsr ResetIn
-            jsr Buff2Byte
+            jsr HexGet   
             bcc RegDisp
             sta ACC
-            jsr Buff2Byte
+            jsr HexGet   
             bcc register_r
             sta XREG
-            jsr Buff2Byte
+            jsr HexGet   
             bcc register_r
             sta YREG
-            jsr Buff2Byte
+            jsr HexGet   
             bcc register_r
             sta PROC
 register_r: rts
@@ -1133,19 +1133,19 @@ RegDisp:    jsr ResetOut
             jsr PrintStr        ; ,,
             ldy #$00            ; Get registers' values from storage and add
 -loop:      lda ACC,y           ;   each one to the buffer. These values came
-            jsr Hex             ;   from the hardware IRQ, and are A,X,Y,P
+            jsr HexOut          ;   from the hardware IRQ, and are A,X,Y,P
             jsr Space           ;   ,,
             iny                 ;   ,,
             cpy #$04            ;   ,,
             bne loop            ;   ,,
             tsx                 ; Add stack pointer to the buffer
             txa                 ; ,,
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             jsr Space           ; ,,
             lda SYS_DEST+1      ; Print high byte of SYS destination
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             lda SYS_DEST        ; Print low byte of SYS destination
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             jmp PrintBuff       ; Print the buffer
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -1258,10 +1258,10 @@ enable_r:   rts
 ; https://github.com/Chysn/wAx/wiki/Memory-Save-and-Load
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 MemSave:    bcc save_err        ; Bail if the address is no good
-            jsr Buff2Byte       ; Convert 2 characters to a byte   
+            jsr HexGet          ; Convert 2 characters to a byte   
             bcc save_err        ; Fail if the byte couldn't be parsed
             sta RANGE_END+1     ; Save to the range high byte
-            jsr Buff2Byte       ; Convert next 2 characters to byte
+            jsr HexGet          ; Convert next 2 characters to byte
             bcc save_err        ; Fail if the byte couldn't be parsed
             sta RANGE_END       ; Save to the range low byte
             jsr FileSetup       ; SETLFS, get filename length, etc.  
@@ -1327,9 +1327,9 @@ show_range: jsr ResetOut
 disk:       jsr ShowCP          ; Show the Command Pointer
             jsr Space           ; Space between start and end
             lda $af             ; Show the end of the loaded range
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             lda $ae             ; ,,
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             jmp PrintBuff       ; ,,
         
 ; Disk Setup
@@ -1425,7 +1425,7 @@ SetupHex:   lda #QUOTE
             lda #$05            ; Place the input index after the quote so
             sta IDX_IN          ;   it can get hex bytes
             ldy #$00            ; Count the number of hex bytes
--loop:      jsr Buff2Byte       ; Is it a valid hex character?
+-loop:      jsr HexGet          ; Is it a valid hex character?
             bcc setup_done      ; If not, the transcription is done
             sta INBUFFER+5,y    ; Store the byte in the buffer
             iny
@@ -1457,16 +1457,16 @@ code_found: lda #WEDGE          ; Show prompt if there's a match
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Copy
 MemCopy:    bcc copy_err        ; Get parameters as 16-bit hex addresses for
-            jsr Buff2Byte       ; Source end
+            jsr HexGet          ; Source end
             bcc copy_err        ; ,,
             sta RANGE_END+1     ; ,,
-            jsr Buff2Byte       ; ,,
+            jsr HexGet          ; ,,
             bcc copy_err        ; ,,
             sta RANGE_END       ; ,,
-            jsr Buff2Byte       ; Target
+            jsr HexGet          ; Target
             bcc copy_err        ; ,,
             sta C_PT+1          ; ,,
-            jsr Buff2Byte       ; ,,    
+            jsr HexGet          ; ,,    
             bcc copy_err        ; ,,
             sta C_PT            ; ,,
             ldx #$00            ; Copy memory from the start address...
@@ -1491,10 +1491,10 @@ copy_err:   jmp SYNTAX_ERR      ; ?SYNTAX ERROR if invalid parameters
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 ; Hex to Base-10
 Hex2Base10: jsr ResetIn         ; Reset input buffer
-            jsr Buff2Byte
+            jsr HexGet   
             bcc hex_conv_r      ; There's no byte available, so bail
             sta W_ADDR+1
-            jsr Buff2Byte
+            jsr HexGet   
             sta W_ADDR
             bcs two_bytes       ; There are two good bytes
             lda W_ADDR+1        ; If there's only one good byte, then
@@ -1524,9 +1524,9 @@ Base102Hex: jsr ResetOut
             jsr MAKADR
             lda SYS_DEST+1
             beq only_low
-            jsr Hex
+            jsr HexOut
 only_low:   lda SYS_DEST
-            jsr Hex
+            jsr HexOut
 b102h_r:    jmp PrintBuff
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -1576,10 +1576,10 @@ set_lab:    jsr ResetIn
             beq init_clear      ;   table
             jsr SymbolIdx       ; Is this a valid symbol, and is there memory
             bcc label_err       ;   to assign it?
-            jsr Buff2Byte
+            jsr HexGet   
             bcc label_err
             sta SYMBOL_AH,y
-            jsr Buff2Byte       ; Get the low byte of the value
+            jsr HexGet          ; Get the low byte of the value
             bcs llow_ok         ; If there's no low byte provided, then the
             lda SYMBOL_AH,y     ;   only valid byte is treated as the low
             tax                 ;   byte, and the high byte is set to 0.
@@ -1678,7 +1678,7 @@ next_label: pla
             lda #"?"            ;   ,,
             jsr CharOut         ;   ,,
             pla                 ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
 lablist_r:  jsr PrintBuff       ;   ,,
             rts
 undefd:     stx IDX_SYM
@@ -1703,7 +1703,7 @@ show_fwd:   tya
             lda #"?"
             jsr CharOut
             pla
-            jsr Hex
+            jsr HexOut
 fwd_d:      jsr PrintBuff
             jmp next_label
 
@@ -1733,12 +1733,12 @@ ExpandSym:  sty IDX_SYM
             cmp #LOW_BYTE       ;   the low byte of the address
             beq insert_lo       ;   ,,
             lda SYMBOL_AH,y     ; If > or no modifier has been specified, then
-            jsr Hex             ;   insert the high byte of the address
+            jsr HexOut          ;   insert the high byte of the address
             lda BYTE_MOD        ;   ,,
             cmp #HIGH_BYTE      ; If > has been specified, then skip the low
             beq do_expand       ;   byte
 insert_lo:  lda SYMBOL_AL,y
-            jsr Hex            
+            jsr HexOut            
 do_expand:  lda #$00            ; Add delimiter, since the hex operand can
             jsr CharOut         ;   vary in length
             ldy #$00            ; Transcribe symbol expansion into the
@@ -1873,10 +1873,10 @@ set_ur:     lda #"U"+$80        ; During BASIC operation, set UR% to the
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 BASICStage: jsr ResetIn         ; Reset the input buffer index
             sta W_ADDR          ; Set default end page
-            jsr Buff2Byte       ; Get the first hex byte
+            jsr HexGet          ; Get the first hex byte
             bcc st_range        ; If no valid address was provided, show range
             sta W_ADDR+1        ; This is the stage's starting page number
-            jsr Buff2Byte       ; But the default can be overridden if a valid
+            jsr HexGet          ; But the default can be overridden if a valid
             bcc ch_length       ;   starting page is provided
             sta W_ADDR          ;   ,,
 ch_length:  lda W_ADDR+1        ; Make sure that the ending page isn't lower
@@ -1926,10 +1926,10 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
             jsr CharOut         ;   ,,
             jsr Space           ;   ,,
             lda $2c             ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             jsr Space           ;   ,,
             lda $34             ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             jmp PrintBuff       ;   ,,
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2079,16 +2079,16 @@ STATUS      = $0247             ; $00 = Non-Matching, $80 = Matching
 COUNT       = $0248             ; Count of unmatched/matched bytes so far
 
 Compare:    bcc cerror          ; Error if the first address is no good
-            jsr Buff2Byte       ; Get high byte of range end
+            jsr HexGet          ; Get high byte of range end
             bcc cerror          ; ,,
             sta RANGE_END+1     ; ,,
-            jsr Buff2Byte       ; Get low byte of range end
+            jsr HexGet          ; Get low byte of range end
             bcc cerror          ; ,,
             sta RANGE_END       ; ,,
-            jsr Buff2Byte       ; Get high byte of compare start
+            jsr HexGet          ; Get high byte of compare start
             bcc cerror          ; ,,
             sta C_PT+1          ; ,,
-            jsr Buff2Byte       ; Get low byte of compare start
+            jsr HexGet          ; Get low byte of compare start
             bcc cerror          ; ,,
             sta C_PT            ; ,,
             lda #$00            ; Reset status and counter
@@ -2176,9 +2176,9 @@ red:        lda #$1c            ; Red
 green:      lda #$1e            ; Green
             jsr CharOut
             lda COUNT+1         ; Show number of matches/no matches
-            jsr Hex             ;   before the change
+            jsr HexOut          ;   before the change
             lda COUNT           ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             jsr PrintBuff       ;   ,,
             pla                 ; Restore original color
             sta $0286           ; ,,
@@ -2243,10 +2243,10 @@ PlugMenu:   jsr ResetIn         ; Reset in to get just a single hex byte
             cmp #QUOTE          ;   name. Otherwise, do an address-based
             beq get_name        ;   install
             jsr ResetIn         ; Install plug-in by address
-            jsr Buff2Byte       ; ,,
+            jsr HexGet          ; ,,
             bcc ShowMenu        ; ,,
             sta $06             ; ,,
-            jsr Buff2Byte       ; ,,
+            jsr HexGet          ; ,,
             bcc ShowMenu        ; ,,
             sta $05             ; ,,
             jmp ShowUsage+1     ; Show usage, +1 to avoid PLP
@@ -2268,9 +2268,9 @@ ShowMenu:   lda #<AddressTxt    ; Before showing the menu, show the current
             jsr PrintStr        ;   ,,
             jsr ResetOut        ;   ,,
             lda USER_VECT+1     ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             lda USER_VECT       ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             jsr PrintBuff       ;   ,,
             jsr PlugType        ; Show the type of plug-in for the user's
             bmi list_plug       ;   convenience
@@ -2395,7 +2395,7 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
 
 ; Buffer to Byte
 ; Get two characters from the buffer and evaluate them as a hex byte
-Buff2Byte:  jsr CharGet
+HexGet   :  jsr CharGet
             jsr Char2Nyb
             bcc buff2_r         ; Return with Carry clear if invalid
             asl                 ; Multiply high nybble by 16
@@ -2468,7 +2468,7 @@ CharOut:    sta CHARAC          ; Save temporary character
 write_r:    rts             
             
 ; Write hexadecimal character
-Hex:        pha                 ; Hex converter based on from WOZ Monitor,
+HexOut:     pha                 ; Hex converter based on from WOZ Monitor,
             lsr                 ;   Steve Wozniak, 1976
             lsr
             lsr
@@ -2509,30 +2509,30 @@ bad_bin:    jmp AsmError
 ; Show Working Address
 ; 16-bit hex address at working address          
 ShowAddr:   lda W_ADDR+1
-            jsr Hex
+            jsr HexOut
             lda W_ADDR
-            jmp Hex 
+            jmp HexOut 
 
 ; Show Command Pointer
 ; 16-bit hex address at Command Pointer address          
 ShowCP:     lda C_PT+1
-            jsr Hex
+            jsr HexOut
             lda C_PT
-            jmp Hex
+            jmp HexOut
             
 ; Show 8-bit Parameter           
 Param_8:    jsr HexPrefix
             jsr IncAddr   
-            jmp Hex            
+            jmp HexOut           
             
 ; Show 16-Bit Parameter            
 Param_16:   jsr HexPrefix
             jsr IncAddr   
             pha
             jsr IncAddr   
-            jsr Hex
+            jsr HexOut
             pla
-            jmp Hex
+            jmp HexOut
 
 ; Interpolate Variable
 ; Replace 'V with hex(V)            
@@ -2558,11 +2558,11 @@ get_var:    jsr CHRGET          ; Get single-letter variable name
             jsr ResetOut        ; Use output buffer for hex conversion
             lda $15
             beq int_low
-            jsr Hex
+            jsr HexOut
             jsr CopyOp
             jsr ResetOut
 int_low:    lda $14
-            jsr Hex
+            jsr HexOut
             jsr CopyOp
             jmp Transcribe            
 
@@ -3388,16 +3388,16 @@ uRelocate:  jmp ph_reloc
             .asc $00,".U FROM TO TARGET",$00
 ph_reloc:   bcs okay            ; Error if invalid first argument (source start)
 error:      jmp $cf08           ; ?SYNTAX ERROR, warm start
-okay:       jsr Buff2Byte       ; Get high byte of source end
+okay:       jsr HexGet          ; Get high byte of source end
             bcc error           ; ,,
             sta SRC_END+1       ; ,,
-            jsr Buff2Byte       ; Get low byte of source end
+            jsr HexGet          ; Get low byte of source end
             bcc error           ; ,,
             sta SRC_END         ; ,,
-            jsr Buff2Byte       ; Get high byte of destination start
+            jsr HexGet          ; Get high byte of destination start
             bcc error           ; ,,
             sta C_PT+1          ; ,,
-            jsr Buff2Byte       ; Get low byte of destination start
+            jsr HexGet          ; Get low byte of destination start
             bcc error           ; ,,
             sta C_PT            ; ,,
             sec                 ; Calculate default offset (C_PT - W_ADDR)
@@ -3413,16 +3413,16 @@ okay:       jsr Buff2Byte       ; Get high byte of source end
             lda OFFSET+1        ;   ,,
             adc SRC_END+1       ;   ,,
             sta DEST_END+1      ;   ,,
-            jsr Buff2Byte       ; Get high byte of destination end
+            jsr HexGet          ; Get high byte of destination end
             bcc Relocate        ;   This is optional, so begin if not provided
             sta DEST_END+1      ;   ,,
-            jsr Buff2Byte       ; Get low byte of destination end
+            jsr HexGet          ; Get low byte of destination end
             bcc error           ;   If only high byte was provided, but not the
             sta DEST_END        ;   low byte, it's a syntax error
-            jsr Buff2Byte       ; Get high byte of offset override
+            jsr HexGet          ; Get high byte of offset override
             bcc Relocate        ;   This is optional, so begin if not provided
             sta OFFSET+1        ;   ,,
-            jsr Buff2Byte       ; Get low byte of offset override
+            jsr HexGet          ; Get low byte of offset override
             bcc error           ;   If only high byte was provided, but not the
             sta OFFSET          ;   low byte, it's a syntax error
             ; Fall through to Relocate
@@ -3588,10 +3588,10 @@ FAIL_POINT  = $024a             ; BASIC program end restore point (2 bytes)
 uML2BAS:    jmp ph_ml2bas
             .asc $00,".U FROM TO+1 [R/H/T] ",$00
 ph_ml2bas:  bcc merror          ; Error if the first address is no good
-            jsr Buff2Byte       ; Get high byte of range end
+            jsr HexGet          ; Get high byte of range end
             bcc merror          ; ,,
             sta RANGE_END+1     ; ,,
-            jsr Buff2Byte       ; Get low byte of range end
+            jsr HexGet          ; Get low byte of range end
             bcc merror          ; ,,
             sta RANGE_END       ; ,,
             jsr CharGet         ; If there's an R at the end of the command,
@@ -3688,7 +3688,7 @@ HexDump:    lda #$04            ; Reset a byte counter; we'll add up to six
             lda #":"            ; Add a colon to specify hex entry
             jsr AddByte         ; Add the wedge character to the buffer
 add_hex:    jsr IncAddr         ; Add the hex data to the buffer
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             jsr mChRange        ; Is the counter still in range?
             bcs code2buff       ; If not, finish the line
 next_byte:  dec $08
@@ -3813,10 +3813,10 @@ CheckRel:   ldx #$00            ; Check the instruction at the working address
             lda #":"            ; Add a colon to indicate that bytes follow
             jsr CharOut         ; ,,
             jsr IncAddr         ; Add the instruction opcode to the buffer
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             jsr Space           ; Space between instruction and operand
             jsr IncAddr         ; Add the operand to the buffer
-            jsr Hex             ; ,,
+            jsr HexOut          ; ,,
             lda #";"            ; Show the mnemonic for the instruction as
             jsr CharOut         ;   a comment, for the reader's benefit
             jsr DMnemonic       ;   ,,
@@ -4173,7 +4173,7 @@ ShowData:   jsr ResetOut        ; Show the data as it's entered
             jsr CharOut         ;   ,,
             ldx #$00            ;   ,,
             lda (W_ADDR,x)      ;   ,,
-            jsr Hex             ;   ,,
+            jsr HexOut          ;   ,,
             jmp PrintBuff       ;   ,,
     
 ; Key to Degree         2    3       5    6     7
