@@ -165,12 +165,12 @@ HIGH_BYTE   = $b1               ; High Byte (>)
 LOW_BYTE    = $b3               ; Low Byte (<)
 
 ; Assembler symbol table
-; You can relocate and/or resize the symbol table by settnig SYM_END,
+; You can relocate and/or resize the symbol table by setting SYM_END,
 ; MAX_LAB, and MAX_FWD to meet your needs. The remaining labels will be
 ; set automatically, and you shouldn't need to touch them.
 ;
-; Note that one of the labels is reserved for the special @/> label, so
-; add one more to MAX_LAB than you need.
+; Note that one of the labels is reserved for the forward reference symbol @&
+; so add one more to MAX_LAB than you need.
 ST_SIZE     = (MAX_LAB + MAX_FWD) * 3 + 1
 SYMBOL_D    = SYM_END-ST_SIZE+1 ; Symbol label definitions
 SYMBOL_AL   = SYMBOL_D+MAX_LAB  ; Symbol address low bytes
@@ -449,8 +449,9 @@ list_stop:  lda #WEDGE          ; Provide a tool for the next page in the key-
 list_r:     jmp EnableBP        ; Re-enable breakpoint, if necessary
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; DISASSEMBLER COMPONENTS
-; https://github.com/Chysn/wAx/wiki/6502-Disassembler
+; DISASSEMBLER
+; https://github.com/Chysn/VIC20-wAx2/wiki/6502-Disassembler
+; https://github.com/Chysn/VIC20-wAx2/wiki/Undocumented-Instruction-Support
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Disassemble
 ; Disassemble a single instruction at the working address
@@ -586,8 +587,8 @@ abs_ind:    jsr Comma           ; This is an indexed addressing mode, so
             jmp CharOut         ;   ,,
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; MEMORY EDITOR COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Memory-Editor
+; MEMORY EDITOR
+; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Editor
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Memory Editor               
 MemEdit:    sta TOOL_CHR        ; Update tool character for Prompt
@@ -659,8 +660,8 @@ BinaryEdit: sta TOOL_CHR        ; Update tool character for prompt
             jmp edit_exit       ;   editor            
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; ASSEMBLER COMPONENTS
-; https://github.com/Chysn/wAx/wiki/6502-Assembler
+; ASSEMBLER
+; https://github.com/Chysn/VIC20-wAx2/wiki/6502-Assembler
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Centrally-located error jump
 asm_error:  jmp AsmError
@@ -797,7 +798,8 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             pla                 ;   ,,
             sta $7b             ;   ,,
             ; Fall through to insert_hex
-insert_hex: jsr ResetOut        ; Store the hex value of the operand after the
+insert_hex: jsr Arithmetic
+            jsr ResetOut        ; Store the hex value of the operand after the
             sta INBUFFER+11     ;   #, so it can be matched by Hypotest.
             lda #"$"            ;   End it with 0 as a line delimiter
             sta INBUFFER+8      ;   ,,
@@ -829,7 +831,7 @@ OutOfRange: ldx #$04            ; ?TOO FAR ERROR
 
 ; Get Operand
 ; Populate the operand for an instruction
-GetOperand: lda IDX_IN          ; Save starting index for arithmetic conversion
+GetOperand: lda IDX_IN          ; Save starting index for f conversion
             sta PREV_IDX        ; ,,
             lda #1              ; Operand size-1 for arithmetic conversion
             sta INSTSIZE        ; ,,
@@ -842,11 +844,15 @@ GetOperand: lda IDX_IN          ; Save starting index for arithmetic conversion
             dec INSTSIZE        ; Set to 0 if only one operand byte
             dec IDX_IN          ; If there's one byte, step back the input index
 high_byte:  sta OPERAND         ;   set the low byte with the input
-            jsr CharGet         ; Check character after operand
+Arithmetic: jsr CharGet         ; Check character after operand
             cmp #"+"            ; Perform addition
             beq add_op          ; ,,
+            cmp #$aa            ; Non-detokenized +
+            beq add_op          ; ,,
             cmp #"-"            ; Perform subtraction
-            beq sub_op
+            beq sub_op          ; ,,
+            cmp #$ab            ; Non-detokenized -
+            beq sub_op          ; ,,
 getop_r:    rts
 sub_op:     jsr CharGet
             jsr Char2Nyb
@@ -987,8 +993,8 @@ pos:        cpy #$80
 compute_r:  rts            
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; MEMORY DUMP COMPONENT
-; https://github.com/Chysn/wAx/wiki/Memory-Dump
+; MEMORY DISPLAY
+; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Display
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Memory:     ldy #$00
 -loop:      jsr ReverseOn
@@ -1025,8 +1031,8 @@ next_char:  iny
             rts
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; BINARY DUMP COMPONENT
-; https://github.com/Chysn/wAx/wiki/Memory-Dump#binary-dump
+; BINARY DISPLAY
+; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Display#binary-display
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 BinaryDisp: jsr IncAddr         ; Get byte at effetive address
             sta TEMP_CALC       ; Store byte for binary conversion
@@ -1050,8 +1056,8 @@ is_zero:    lda #"0"
             jmp HexOut
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; ASSERTION TESTER COMPONENT
-; https://github.com/Chysn/wAx/wiki/Assertion-Tester 
+; ASSERTION TESTER/QUICK PEEK
+; https://github.com/Chysn/VIC20-wAx2/wiki/Assertion-Tester
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Tester:     bcc test_err        ; Error if no address
             ldy #$00            ; Start with 0 index
@@ -1088,8 +1094,8 @@ test_r:     tya                 ; Update working address with number of
 test_err:   jmp MisError
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; SUBROUTINE EXECUTION COMPONENT
-; https://github.com/Chysn/wAx/wiki/Subroutine-Execution
+; GO
+; https://github.com/Chysn/VIC20-wAx2/wiki/Go
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Execute:    bcc iterate         ; No address was provided; continue from BRKpt
             lda W_ADDR          ; Set the temporary INT storage to the program
@@ -1108,8 +1114,8 @@ iterate:    pla                 ; Remove return to Return from the stack; it
             jmp SYS_BRK         ; SYS with no tail return address
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; REGISTER COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Register-Editor
+; REGISTER EDITOR
+; https://github.com/Chysn/VIC20-wAx2/wiki/Register-Editor
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Register:   jsr ResetIn
             jsr HexGet   
@@ -1149,8 +1155,8 @@ RegDisp:    jsr ResetOut
             jmp PrintBuff       ; Print the buffer
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; BREAKPOINT COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Breakpoint-Manager
+; BREAKPOINT MANAGER
+; https://github.com/Chysn/VIC20-wAx2/wiki/Breakpoint-Manager
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 SetBreak:   php
             jsr ClearBP         ; Clear the old breakpoint, if it exists
@@ -1254,8 +1260,8 @@ EnableBP:   lda BREAKPOINT+2
 enable_r:   rts
                                                              
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; MEMORY SAVE AND LOAD COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Memory-Save-and-Load
+; DISK,TAPE,SD STORAGE
+; https://github.com/Chysn/VIC20-wAx2/wiki/Disk-Tape-SD-Storage
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 MemSave:    bcc save_err        ; Bail if the address is no good
             jsr HexGet          ; Convert 2 characters to a byte   
@@ -1313,10 +1319,7 @@ cassette:   ldy #$01            ; ,, (load to header location)
 load_r:     rts
 show_range: jsr ResetOut
             jsr Linefeed
-            jsr wAxPrompt
-            lda #T_DIS          ; Show the loaded range, if from disk
-            jsr CharOut         ; ,,
-            jsr Space           ; ,,
+            jsr AddrPrefix      ; Show address prefix with prompt
             ldx DEVICE          ; If the device numbr is 1, skip the start/end
             cpx #$01            ;   display
             bne disk
@@ -1355,8 +1358,8 @@ setup_r:    tya
 setup_err:  jmp save_err
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; SEARCH COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Search
+; SEARCH
+; https://github.com/Chysn/VIC20-wAx2/wiki/Search
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Search:     bcc srch_r          ; Bail if the address is no good
             lda INBUFFER+4      ; Bail if there's nothing to search
@@ -1452,8 +1455,8 @@ code_found: lda #WEDGE          ; Show prompt if there's a match
             jmp check_end       ; Go back for more      
       
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; COPY COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Copy-and-Fill
+; TRANSFER AND FILL
+; https://github.com/Chysn/VIC20-wAx2/wiki/Transfer-and-Fill
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Copy
 MemCopy:    bcc copy_err        ; Get parameters as 16-bit hex addresses for
@@ -1486,8 +1489,8 @@ copy_end:   jsr IncCP           ; Advance Command Pointer
 copy_err:   jmp SYNTAX_ERR      ; ?SYNTAX ERROR if invalid parameters
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; NUMERIC CONVERSION COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Numeric-Conversion
+; NUMERIC CONVERSION
+; https://github.com/Chysn/VIC20-wAx2/wiki/Numeric-Conversion
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 ; Hex to Base-10
 Hex2Base10: jsr ResetIn         ; Reset input buffer
@@ -1531,8 +1534,8 @@ b102h_r:    jmp PrintBuff
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; SYMBOLIC ASSEMBLER COMPONENTS
-; https://github.com/Chysn/wAx/wiki/Symbol-Table-Manager
-; https://github.com/Chysn/wAx/wiki/Labels
+; https://github.com/Chysn/VIC20-wAx2/wiki/Symbol-Table-Manager
+; https://github.com/Chysn/VIC20-wAx2/wiki/Symbols
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 ; Set Command Pointer
 SetCP:      lda #0              ; Reset forward reference overflow counter
@@ -1868,8 +1871,8 @@ set_ur:     lda #"U"+$80        ; During BASIC operation, set UR% to the
             rts
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; BASIC STAGE SELECT COMPONENT
-; https://github.com/Chysn/wAx/wiki/Change-BASIC-Stage
+; BASIC Stage Manager
+; https://github.com/Chysn/VIC20-wAx2/wiki/Change-BASIC-Stage
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 BASICStage: jsr ResetIn         ; Reset the input buffer index
             sta W_ADDR          ; Set default end page
@@ -1933,7 +1936,8 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
             jmp PrintBuff       ;   ,,
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; FILE LISTING COMPONENTS
+; FILE LISTING
+; https://github.com/Chysn/VIC20-wAx2/wiki/Disk-Tape-SD-Storage#file-listing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 QUOTE_FL    = $0247             ; Quote flag for filename
 FIRST_REC   = $0248             ; First record flag
@@ -2051,7 +2055,8 @@ Rechain:    jsr $c533           ; Re-chain BASIC program to set BASIC
             jmp $c655           ;   ,,
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; TEXT DISPLAY COMPONENT (INTERPRET)
+; TEXT DISPLAY (INTERPRET)
+; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Display#text-display
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 TextDisp:   lda #$22
             jsr CharOut
@@ -2072,7 +2077,8 @@ tadd_char:  jsr CharOut         ; ,,
             jmp CharOut
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; COMPARE COMPONENTS
+; COMPARE
+; https://github.com/Chysn/VIC20-wAx2/wiki/Compare
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Compare tool workspace
 STATUS      = $0247             ; $00 = Non-Matching, $80 = Matching
@@ -2185,7 +2191,8 @@ green:      lda #$1e            ; Green
             rts
                  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-; HELP COMPONENT
+; HELP
+; https://github.com/Chysn/VIC20-wAx2/wiki/wAx2-Tutorial#invoking-wax-tools
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
             ldy #>HelpScr1      ;   because it's longer than 256 bytes
@@ -2196,7 +2203,7 @@ Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
                                 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; USER PLUG-IN
-; https://github.com/Chysn/wAx/wiki/User-Plug-In
+; https://github.com/Chysn/VIC20-wAx2/wiki/User-Plug-In
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 PlugIn:     php                 ; Push processor status, used by most tools
             lda INBUFFER        ; If the first character is P, then the user
@@ -2234,7 +2241,8 @@ PlugType:   ldy #3              ; If the user plug-in's 4th byte is $80,
             rts                 ;   to format its output. Otherwise, it will be
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; PLUG-IN MENU COMPONENT
+; PLUG-IN MANAGER
+; https://github.com/Chysn/VIC20-wAx2/wiki/User-Plug-In#user-plug-in-manager
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CurChar     = $0247
 
@@ -2809,7 +2817,7 @@ pi:         lda #$5E
 ; DATA
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; ToolTable contains the list of tools and addresses for each tool
-ToolTable:	.byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
+ToolTable:  .byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
             .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR
             .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,LABEL,$96
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
@@ -3263,7 +3271,7 @@ RUNNING     = $024a             ; Running
 BASIC       = $024b             ; BASIC program
 
 uwAxfer:    jmp ph_waxfer
-            .asc $00,".U [B/T][ADDR]       ",$00
+            .asc $00,".U [B/T/ADDR]       ",$00
 ph_waxfer:  bcc ch_pk           ; If no address is provided, check for T
             lda #2              ; Set header as though the header has already
             sta HEADER          ;   been read
@@ -3376,6 +3384,7 @@ ser_r:      jmp RFI             ; Return from the User Port interrupt
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; RELOCATE
+; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-Relocate
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Relocate Workspace
 SRC_END     = $0247             ; End of source range (2 bytes)
@@ -3474,6 +3483,7 @@ rcheck_end: cmp DEST_END        ; Have we reached the end of the range?
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; DEBUG
+; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-Debug
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; BASIC Routines
 UND_ERROR   = $c8e3             ; UNDEF'D STATEMENT ERROR
@@ -3579,6 +3589,7 @@ AddrSize:   .byte 0,3,2,2,3,3,3,2,2,2,2,1,0,1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; ML TO BASIC
+; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-ML-to-BASIC
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; ML2BAS Workspace
 LINE_NUM    = $0247             ; BASIC Line Number (2 bytes)
@@ -3644,7 +3655,7 @@ range_ok:   jsr LinkBytes
             jsr LineNumber
             lda #WEDGE          ; Add the wedge character
             jsr AddByte         ; ,,
-            lda #T_ASM          ; Default to the assembler tool, but...
+            lda #T_ASM_AL       ; Default to the assembler tool, but...
             ldy MODIFIER        ; If the modifier is T (assertion test), then
             cpy #"T"            ;   switch the tool over to =
             bne show_tool       ;   ,,
@@ -3839,7 +3850,8 @@ min_range:  clc
             rts
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; CHARACTER GENERATOR
+; CHARACTER HELPER
+; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-Character-Helper
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CURBYTE     = $0247             ; Current byte value
 
@@ -3896,6 +3908,7 @@ cnextline:  ldx #$08
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; WAXSCORE
+; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-wAxScore
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; System Resources
 VOICE       = $900b
@@ -4187,6 +4200,7 @@ Oct1:       .byte 0,194,197,201,204,207,209,212,214,217,219,221,223,225
       
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; MEMORY CONFIG
+; https://github.com/Chysn/VIC20-wAx2/wiki/About-wAxpander
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 uConfig:    jmp ph_conf
             .asc $00,".U 0K/3K/MAX         ",$00
@@ -4207,17 +4221,17 @@ GO3K:       lda #4
             lda #30
             sta $0284
             sta $0288
-soft_reset:	jsr	$fd52		    ; restore default I/O vectors
-	        jsr	$fdf9   		; initialize I/O registers
-	        jsr	$e518		    ; initialise hardware
-	        cli				    ; enable interrupts            
-	        jsr	$e45b		    ; Initialise BASIC vector table
-	        jsr	$e3a4		    ; Initialise BASIC RAM locations
-	        jsr	$e404		    ; Print start up message and initialise memory pointers
-	        ldx	#$fb			; Value for start stack
-	        txs				    ; Set stack pointer
-	        jsr Install         ; Re-install wAx
-	        jmp	$c474
+soft_reset: jsr $fd52           ; restore default I/O vectors
+            jsr $fdf9           ; initialize I/O registers
+            jsr $e518           ; initialise hardware
+            cli                 ; enable interrupts            
+            jsr $e45b           ; Initialise BASIC vector table
+            jsr $e3a4           ; Initialise BASIC RAM locations
+            jsr $e404           ; Print start up message and initialise memory pointers
+            ldx #$fb            ; Value for start stack
+            txs                 ; Set stack pointer
+            jsr Install         ; Re-install wAx
+            jmp $c474
 GO24K:      lda #$12
             sta $0282
             lda #$80
