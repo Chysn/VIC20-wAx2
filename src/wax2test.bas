@@ -1,7 +1,6 @@
 1 print"{clr}{red}**  wax test suite  **"
 7 print "{black}* assemble all instr"
 10 print"  testing...     "
-15 rem ** test 1 6502 assembly
 20 .* 6000
 100 .a * adc #$00
 101 .a * adc $10
@@ -154,10 +153,6 @@
 248 .a * txa 
 249 .a * txs 
 250 .a * tya 
-260 rem ** test 2 verify 6502 assem
-265 print "{up}             {blue}[sweet]{black}"
-272 print "* verify assembly"
-273 print "  testing...     "
 274 .* 6000
 301 .= * 69006510
 302 .= * 75206d30
@@ -257,7 +252,7 @@
 414 .= 6810 54 45 58 54
 415 .= 6814 31 32 33 34
 417 .= 6818 01 02 03 04
-420 print "{up}             {blue}[disco]{black}"
+420 print "{up}             {blue}[sweet]{black}"
 500 rem ** test 4 immed operands
 501 print "* immediate operands"
 502 print"  testing...     "
@@ -269,7 +264,6 @@
 508 .a *    lda #/"j"
 509 .= 6800 a99309d6a2b5a064a910
 510 print "{up}               {blue}[lit]{black}"
-599 rem ** test 5 symbolic assembly
 600 print "* symbolic assembly"
 601 print "  testing...     "
 602 .@-
@@ -304,7 +298,6 @@
 632 .= 6818 024a454a
 633 .= 681c 4c0000
 634 print "{up}          {blue}[wondrous]{black}"
-699 rem ** test 6 ur% and cp
 700 print "* basic integration"
 705 print"  testing...     "
 710 .@-
@@ -320,7 +313,6 @@
 745 if p <> 2 then print "pass error":stop
 747 if cp <> 26672 then print "cp error":stop
 750 print "{up}              {blue}[dope]{black}"
-800 rem ** arithmetic and substitution
 801 print "* param modifiers"
 803 print"  testing...     "
 805 .a 6800 ldx #$50+1
@@ -330,11 +322,9 @@
 825 .a *    lda #"z"+1
 830 p = 65490 : c = asc("@")
 835 .a *    jsr 'p
-840 .a *    cpy 'c
+840 ., *    cpy 'c
 845 .a *    brk
 850 .= 6800 a251a1fca05fc900
 855 .= *    a95b20d2ffc44000
 860 print "{up}           {blue}[far out]{black}"
 1000 print:print "{green}all tests pass!{blue}"
-
-

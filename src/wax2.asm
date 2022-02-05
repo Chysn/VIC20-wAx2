@@ -2553,8 +2553,10 @@ InterpVar:  lda TOOL_CHR        ; If the interpolation is in the Assemble
             cmp #T_ASM          ;   tool, as an operand, add the $ in
             beq add_hexsig      ;   front of the hex digits.
             cmp #T_SRC          ; Same with code search
+            beq add_hexsig      ; ,,
+            cmp #T_ASM_AL       ; Same with assembly alias
             bne get_var         ; ,,
-add_hexsig: lda IDX_IN          ;   If the target address is being inter-
+add_hexsig: lda IDX_IN          ; If the target address is being inter-
             cmp #4              ;   polated, then don't add the $
             bcc get_var         ;   ,,
             lda #"$"            ;   ,,
