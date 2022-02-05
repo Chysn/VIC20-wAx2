@@ -1,6 +1,6 @@
 1 print"{clr}{red}**  wax test suite  **"
 7 print "{black}* assemble all instr"
-10 print"  testing...     ";
+10 print"  testing...     "
 15 rem ** test 1 6502 assembly
 20 .* 6000
 100 .a * adc #$00
@@ -155,9 +155,9 @@
 249 .a * txs 
 250 .a * tya 
 260 rem ** test 2 verify 6502 assem
-271 print "{blue}[ok]{black}"
+265 print "{up}             {blue}[sweet]{black}"
 272 print "* verify assembly"
-273 print "  testing...     ";
+273 print "  testing...     "
 274 .* 6000
 301 .= * 69006510
 302 .= * 75206d30
@@ -240,10 +240,10 @@
 379 .= * 8c4444aa
 380 .= * a8ba8a9a
 381 .= * 98
-382 print "{blue}[ok]{black}"
+382 print "{up}           {blue}[awesome]{black}"
 383 rem ** test 3 edit tests
 385 print "* memory editors"
-386 print "  testing...     ";
+386 print "  testing...     "
 400 ., 6800:00 11 22 33
 401 ., 6804:44 55 66 77
 402 ., 6808:88 99 aa bb
@@ -255,20 +255,20 @@
 413 .= 680c cc dd ee ff
 414 .= 6810 54 45 58 54
 415 .= 6814 31 32 33 34
-420 print "{blue}[ok]{black}"
+420 print "{up}             {blue}[disco]{black}"
 500 rem ** test 4 immed operands
 501 print "* immediate operands"
-502 print"  testing...     ";
+502 print"  testing...     "
 503 .@-
 504 .a 6800 lda #"{clr}"
 505 .a 6802 ora #%11010110
 506 .a *    ldx #$b2+3
 507 .a *    ldy #100
 508 .= 6800 a99309d6a2b5a064
-509 print"{blue}[ok]{black}"
+509 print "{up}               {blue}[lit]{black}"
 599 rem ** test 5 symbolic assembly
 600 print "* symbolic assembly"
-601 print "  testing...     ";
+601 print "  testing...     "
 602 .@-
 604 .@a 02a5 ; test def
 605 .* 6800 ; set pc
@@ -300,10 +300,10 @@
 631 .= 6814 ad136855
 632 .= 6818 024a454a
 633 .= 681c 4c0000
-634 print "{blue}[ok]{black}"
+634 print "{up}          {blue}[wondrous]{black}"
 699 rem ** test 6 ur% and cp
 700 print "* basic integration"
-705 print"  testing...     ";
+705 print"  testing...     "
 710 .@-
 712 p = 0
 715 ur% = 0 : p = p + 1
@@ -316,10 +316,10 @@
 740 if ur% goto 715
 745 if p <> 2 then print "pass error":stop
 747 if cp <> 26672 then print "cp error":stop
-750 print "{blue}[ok]{black}"
+750 print "{up}              {blue}[dope]{black}"
 800 rem ** arithmetic and substitution
 801 print "* param modifiers"
-803 print"  testing...     ";
+803 print"  testing...     "
 805 .a 6800 ldx #$50+1
 810 .a *    lda ($fa+2,x)
 815 .a *    ldy #100-5
@@ -331,7 +331,7 @@
 845 .a *    brk
 850 .= 6800 a251a1fca05fc900
 855 .= *    a95b20d2ffc44000
-860 print "{blue}[ok]{black}"
-1000 print "{green}done!{blue}"
+860 print "{up}           {blue}[far out]{black}"
+1000 print:print "{green}all tests pass!{blue}"
 
 
