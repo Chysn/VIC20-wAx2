@@ -797,6 +797,10 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             sta $7a             ;   freak out
             pla                 ;   ,,
             sta $7b             ;   ,,
+            inc IDX_IN          ; Advance the index to the next location to
+            cpy #100            ;   check for + or -. If the decimal operand was
+            bcc insert_hex      ;   100 or more, advance the index again to
+            inc IDX_IN          ;   account for the third digit.
             ; Fall through to insert_hex
 insert_hex: jsr Arithmetic
             jsr ResetOut        ; Store the hex value of the operand after the
