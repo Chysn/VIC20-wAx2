@@ -229,6 +229,7 @@ jPrintStr:  jmp PrintStr        ; a02a
 jNextList:  jmp NextList        ; a02d
 jDirectMode:jmp DirectMode      ; a030
 jSizeOf:    jmp SizeOf          ; a033
+jDisasm:    jmp Disasm          ; a036
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -3278,25 +3279,30 @@ RUNNING     = $024a             ; Running
 BASIC       = $024b             ; BASIC program
 
 uwAxfer:    jmp ph_waxfer
-            .asc $00,".U [B/T/ADDR]       ",$00
-ph_waxfer:  bcc ch_pk           ; If no address is provided, check for T
-            lda #2              ; Set header as though the header has already
-            sta HEADER          ;   been read
-            jsr Addr2CP         ; Program counter will be start of memory
-            lsr TERMMODE        ; Set PRG mode
-            jmp setup           ; Continue to hardware setup
-ch_pk:      lda #0              ; Header byte count clear
+            .asc $00,".U [B/T/ADDR]",$00
+ph_waxfer:  php
+            lsr TERMMODE        ; Default to not Terminal Mode
+            lsr BASIC           ; Default to not BASIC
+            lda #0              ; Initialize 2-byte header read
             sta HEADER          ; ,,
-            sta TERMMODE        ; Default to PRG mode
-            sta BASIC           ; Default to non-BASIC
-            jsr ResetIn         ; Get first character
+            plp
+            bcc ch_pk           ; If no address is provided, check for T or B
+            jsr Addr2CP         ; Set CP to starting addres
+            lda #2              ; Pretend that the header has already been
+            sta HEADER          ;   received
+            jmp setup           ; Continue to hardware setup
+ch_pk:      jsr ResetIn         ; Get first character
             jsr CharGet         ; ,,
             cmp #"T"            ; Terminal mode
             bne ch_basic        ; ,,
+            lda #2              ; Consider the header done for terminal mode
+            sta HEADER          ; ,,
             sec                 ; Set Terminal mode
             ror TERMMODE        ; ,,
+            jmp setup           ; Continue setup
 ch_basic:   cmp #"B"            ; Is BASIC specified?
-            bne setup           ; ,,
+            bne setup           ; If not, just treat incoming data as a PRG
+            sec                 ; Turn on BASIC flag
             ror BASIC           ; ,,
 setup:      lda #0              ; Set DDR to listen to all 8 data lines,
             sta DDR             ; ,,
@@ -3321,11 +3327,10 @@ ch_stop:    jsr ISCNTC          ; Check for STOP key
             bit RECEIVED        ; If data receive flag is off, just wait
             bpl wait            ; ,,
             lsr RECEIVED        ; Turn the flag off
-            lda W_ADDR          ; Are we at a multiple of 256 bytes?
-            bne wait            ;   If not, wait
-            jsr ProgHead        ; Show progress header        
-            jsr ShowAddr        ; Show address during transfer
-            jsr PrintBuff       ; ,,
+            lda W_ADDR          ; Are we at a multiple of 64 bytes?
+            and #%00111111      ; ,,
+            bne wait            ; If not, just get more data
+            jsr Progress        ; Show progress header  
             lda #CRSRUP         ; Cursor back up
             jsr $ffd2           ; ,,
             jmp wait            ; Back to start of wait loop
@@ -3333,19 +3338,19 @@ ch_stop:    jsr ISCNTC          ; Check for STOP key
 ; Show Received Data Range            
 Complete:   bit RUNNING         ; Was any data received?
             bpl comp_r          ;   If not, just end without showing anything
-is_data:    jsr ProgHead        ; Show progress header
-            jsr ShowCP          ;    Starting address        
-            jsr Space           ;      to
-            jsr ShowAddr        ;   end address
-            jsr PrintBuff       ;   ,,
+is_data:    jsr Progress        ; Show progress header
             bit BASIC           ; Rechain BASIC program, if specified with B
             bpl comp_r          ; ,,
             jsr Rechain         ; ,,
 comp_r:     jmp (READY) 
 
 ; Show Progress Header
-ProgHead:   jsr ResetOut        ; Show final locations...
-            jmp AddrPrefix      ; Show address prefix
+Progress:   jsr ResetOut        ; Show final locations...
+            jsr AddrPrefix      ; Show address prefix
+            jsr ShowCP          ;    Starting address        
+            jsr Space           ;      to
+            jsr ShowAddr        ;   end address
+            jmp PrintBuff       ;   ,,            
   
 ; Interrupt Service Routine
 ; Handles NMI Interrupt triggered by CB2 high-to-low transition                                  
@@ -3364,8 +3369,11 @@ recv:       lda UPORT           ; Get the User Port byte
             ldx HEADER          ; Get current header count
             cpx #2              ; If both header bytes have been received,
             beq prg             ;   handle PRG data
-            sta W_ADDR,x        ; Otherwise, store header bytes in working
-            sta C_PT,x          ;   address and Command Pointer
+            bit BASIC           ; If in BASIC mode, instead of setting starting
+            bpl store_addr      ;   addresses from incoming data, set them
+            lda $2b,x           ;   from start-of-BASIC Stage
+store_addr: sta W_ADDR,x        ;   ,,
+            sta C_PT,x          ;   ,,
             inc HEADER          ; Advance header
             bne ser_r           ; Return from interrupt
 prg:        ldx #0              ; Store PRG data byte in current location
@@ -3504,7 +3512,7 @@ KNAPSIZE    = BREAKPT+2         ; Knapsack size (1 byte)
 ; * If setting a breakpoint, its address is in W_ADDR vector
 ; * If clearing a breakpoint, the Carry flag is clear
 uDebug:     jmp ph_debug
-            .asc $00,".U ADDR              ",$00 
+            .asc $00,".U ADDR",$00 
 ph_debug:   bcs NewKnap         ; A legal address has been provided in $a6/$a7
 restore:    lda BREAKPT         ; Otherwise, restore the breakpoint to the
             sta W_ADDR          ;   original code by copying the
@@ -3604,7 +3612,7 @@ MODIFIER    = $0249             ; Relocate or absolute
 FAIL_POINT  = $024a             ; BASIC program end restore point (2 bytes)
 
 uML2BAS:    jmp ph_ml2bas
-            .asc $00,".U FROM TO+1 [R/H/T] ",$00
+            .asc $00,".U FROM TO+1 [R/H/T]",$00
 ph_ml2bas:  bcc merror          ; Error if the first address is no good
             jsr HexGet          ; Get high byte of range end
             bcc merror          ; ,,
@@ -3863,7 +3871,7 @@ min_range:  clc
 CURBYTE     = $0247             ; Current byte value
 
 uChar:      jmp ph_char
-            .asc $00,".U [ADDR]            ",$00
+            .asc $00,".U [ADDR]",$00
 ph_char:    bcc Canvas
             lda #$00
             sta $07
@@ -3934,7 +3942,7 @@ QUARTER     = $20               ; Quarter note
 EIGHTH      = $10               ; Eighth note
 
 uwAxScore:  jmp ph_waxsc
-            .asc $00,".U ADDR [R]          ",$00
+            .asc $00,".U ADDR [R]",$00
 ph_waxsc    bcs maddr_ok        ; Bail if no valid address was provided
             rts                 ; ,,
 maddr_ok:   lda #$08            ; Set volume
@@ -4210,7 +4218,7 @@ Oct1:       .byte 0,194,197,201,204,207,209,212,214,217,219,221,223,225
 ; https://github.com/Chysn/VIC20-wAx2/wiki/About-wAxpander
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 uConfig:    jmp ph_conf
-            .asc $00,".U 0K/3K/MAX         ",$00
+            .asc $00,".U 0K/3K/MAX",$00
 ph_conf:    jsr ResetIn
             jsr CharGet
             cmp #"0"
