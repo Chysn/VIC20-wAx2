@@ -301,8 +301,8 @@
 632 .= 6818 024a454a
 633 .= 681c 4c0000
 634 print "{blue}[ok]{black}"
-699 rem ** test 6 multipass
-700 print "* ur% and cp"
+699 rem ** test 6 ur% and cp
+700 print "* basic integration"
 705 print"  testing...     ";
 710 .@-
 712 p = 0
