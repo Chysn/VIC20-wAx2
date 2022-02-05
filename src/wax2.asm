@@ -2439,10 +2439,11 @@ pc_r:       rts
 
 ; Address Display
 ; For address-only displays, like the kids you'd find in searches and
-; statuses, they should begin with a semicolon, and then a space,
+; statuses, they should begin with an asterisk, and then a space,
 ; and then the address. This shows the semicolon and the space
 AddrPrefix: jsr wAxPrompt
-            jsr Semicolon
+            lda #"*"
+            jsr CharOut
             ; Fall through to Space
 
 ; Commonly-Used Characters
