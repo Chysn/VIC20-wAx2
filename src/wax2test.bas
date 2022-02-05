@@ -249,12 +249,14 @@
 402 ., 6808:88 99 aa bb
 403 ., 680c:cc dd ee ff
 404 ., 6810"text1234"
+405 ., 6818 /"abcd"
 410 .= 6800 00 11 22 33
 411 .= 6804 44 55 66 77
 412 .= 6808 88 99 aa bb
 413 .= 680c cc dd ee ff
 414 .= 6810 54 45 58 54
 415 .= 6814 31 32 33 34
+417 .= 6818 01 02 03 04
 420 print "{up}             {blue}[disco]{black}"
 500 rem ** test 4 immed operands
 501 print "* immediate operands"
@@ -264,8 +266,9 @@
 505 .a 6802 ora #%11010110
 506 .a *    ldx #$b2+3
 507 .a *    ldy #100
-508 .= 6800 a99309d6a2b5a064
-509 print "{up}               {blue}[lit]{black}"
+508 .a *    lda #/"j"
+509 .= 6800 a99309d6a2b5a064a910
+510 print "{up}               {blue}[lit]{black}"
 599 rem ** test 5 symbolic assembly
 600 print "* symbolic assembly"
 601 print "  testing...     "
