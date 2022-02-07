@@ -425,13 +425,13 @@ NextList:   jsr PrintBuff
             cmp W_ADDR          ; ,,
             lda RANGE_END+1     ; ,,
             sbc W_ADDR+1        ; ,,
-            bcc list_stop       ; ,,
+            bcc ch_shift        ; ,,
 skip_range: jsr ISCNTC          ; Exit if STOP key is pressed
             beq list_stop       ; ,,          
             dex                 ; Exit if loop is done
             bne ListLine        ; ,,
             inx                 ; But if the loop is done, but a Shift key
-            lda KEYCVTRS        ;   is engaged, then go back for one more
+ch_shift:   lda KEYCVTRS        ;   is engaged, then go back for one more
             and #$01            ;   ,,
             bne ListLine        ;   ,,
             lda TOOL_CHR        ; If the breakpoint was set, don't update
