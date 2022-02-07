@@ -421,12 +421,11 @@ NextList:   jsr PrintBuff
             tax
             bpl skip_range      ; If X bit 7 is clear, don't check range
             inx                 ; Compensate for dex to keep bit 7 set
-            lda W_ADDR+1        ; Check to see if we've gone beyond the
-            cmp RANGE_END+1     ;   specified range
-            bcc skip_range      ;   ,,
-            lda RANGE_END       ;   ,,
-            cmp W_ADDR          ;   ,,
-            bcc list_stop       ; If so, end the list
+            lda RANGE_END       ; Check for end of range
+            cmp W_ADDR          ; ,,
+            lda RANGE_END+1     ; ,,
+            sbc W_ADDR+1        ; ,,
+            bcc list_stop       ; ,,
 skip_range: jsr ISCNTC          ; Exit if STOP key is pressed
             beq list_stop       ; ,,          
             dex                 ; Exit if loop is done
