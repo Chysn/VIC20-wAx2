@@ -1547,7 +1547,7 @@ SetCP:      lda #0              ; Reset forward reference overflow counter
             sta OVERFLOW_F      ; ,,
             bcs Addr2CP         ; Do only that if no address provided
             rts
-Addr2CP:     lda W_ADDR          ; Move working address to Command Pointer
+Addr2CP:    lda W_ADDR          ; Move working address to Command Pointer
             sta C_PT            ; ,,
             lda W_ADDR+1        ; ,,
             sta C_PT+1          ; ,,
@@ -2159,10 +2159,7 @@ toggle_off: asl
 ; Start Line
 ; Reset the output buffer, and add the addresses
 StartLine:  jsr ResetOut
-            jsr wAxPrompt
-            lda #T_MEM
-            jsr CharOut
-            jsr Space
+            jsr AddrPrefix
             jsr ShowAddr
             lda #";"
             jsr CharOut
@@ -2183,10 +2180,15 @@ report:     lda $0286           ; Store current color
             lda STATUS
             beq green
 red:        lda #$1c            ; Red
-            .byte $3c           ; TOP (skip word)
+            jsr CharOut
+            lda #"!"
+            jsr CharOut
+            jmp show_qty
 green:      lda #$1e            ; Green
             jsr CharOut
-            lda COUNT+1         ; Show number of matches/no matches
+            lda #"="
+            jsr CharOut
+show_qty:   lda COUNT+1         ; Show number of matches/no matches
             jsr HexOut          ;   before the change
             lda COUNT           ;   ,,
             jsr HexOut          ;   ,,
