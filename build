@@ -9,3 +9,5 @@ cp ./vic/wax2.prg ~/vic20/wax2
 petcat -w2 -o vic/wax2test.prg -- src/wax2test.bas
 cp ./vic/wax2test.prg ~/vic20/
 
+ls -la ./vic/wax2.bin
+

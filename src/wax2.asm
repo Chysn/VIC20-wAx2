@@ -40,7 +40,7 @@ LIST_NUM    = $10               ; Display this many lines
 SEARCH_L    = $10               ; Search this many pages (s * 256 bytes)
 DEF_DEVICE  = $08               ; Default device number
 SYM_END     = $02ff             ; Top of Symbol Table
-MAX_LAB     = 19                ; Maximum number of user labels + 1
+MAX_SYM     = 19                ; Maximum number of user symbols + 1
 MAX_FWD     = 12                ; Maximum number of forward references
 
 ; Tool Setup
@@ -166,16 +166,16 @@ LOW_BYTE    = $b3               ; Low Byte (<)
 
 ; Assembler symbol table
 ; You can relocate and/or resize the symbol table by setting SYM_END,
-; MAX_LAB, and MAX_FWD to meet your needs. The remaining labels will be
+; MAX_SYM, and MAX_FWD to meet your needs. The remaining labels will be
 ; set automatically, and you shouldn't need to touch them.
 ;
 ; Note that one of the labels is reserved for the forward reference symbol @&
-; so add one more to MAX_LAB than you need.
-ST_SIZE     = (MAX_LAB + MAX_FWD) * 3 + 1
+; so add one more to MAX_SYM than you need.
+ST_SIZE     = (MAX_SYM + MAX_FWD) * 3 + 1
 SYMBOL_D    = SYM_END-ST_SIZE+1 ; Symbol label definitions
-SYMBOL_AL   = SYMBOL_D+MAX_LAB  ; Symbol address low bytes
-SYMBOL_AH   = SYMBOL_AL+MAX_LAB ; Symbol address high bytes
-SYMBOL_F    = SYMBOL_AH+MAX_LAB ; Symbol unresolved forward references
+SYMBOL_AL   = SYMBOL_D+MAX_SYM  ; Symbol address low bytes
+SYMBOL_AH   = SYMBOL_AL+MAX_SYM ; Symbol address high bytes
+SYMBOL_F    = SYMBOL_AH+MAX_SYM ; Symbol unresolved forward references
 SYMBOL_FL   = SYMBOL_F+MAX_FWD  ;   Forward reference low bytes
 SYMBOL_FH   = SYMBOL_FL+MAX_FWD ;   Forward reference high bytes
 OVERFLOW_F  = SYMBOL_FH+MAX_FWD ; Symbol unresolved reference overflow count
@@ -668,9 +668,12 @@ asm_error:  jmp AsmError
 
 ; Assemble 6502 Instruction
 ; Or data
-Assemble:   bcc asm_error       ; Bail if the address is no good
-            lda INBUFFER+4      ; If the user just pressed Return at the prompt,
-            beq asm_r           ;   go back to BASIC
+Assemble:   bcs ch_return       ; Bail if the address is no good
+            lda INBUFFER        ; Permit comment at the beginning of a line
+            beq asm_r           ;   of assembly
+            bne asm_error       ;   ,,
+ch_return:  lda INBUFFER+4      ; If user pressed RETURN at an assembly prompt,
+            beq asm_r           ;   go back to wAx prompt
 -loop:      jsr CharGet         ; Look through the buffer for either
             beq test            ;   0, which should indicate implied mode, or:
             ldy IDX_IN          ; If we've gone past the first character after
@@ -686,7 +689,8 @@ ch_txt:     cmp #QUOTE          ; " = Text entry (route to text editor)
             cmp #T_BIN          ; % = Binary entry (route to binary editor)
             beq BinaryEdit      ; ,,
             cmp #"/"            ; / = Screen code entry (route to screen code
-            beq ScrEdit         ;   editor)
+            bne op_parts        ;   editor)
+            jmp ScrEdit         ;   ,,
 op_parts:   cmp #"#"            ; # = Parse immediate operand (quotes and %)
             beq ImmedOp         ; ,,         
             cmp #"$"            ; $ = Parse the operand
@@ -1162,10 +1166,21 @@ RegDisp:    jsr ResetOut
 ; BREAKPOINT MANAGER
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Breakpoint-Manager
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-SetBreak:   php
-            jsr ClearBP         ; Clear the old breakpoint, if it exists
-            plp                 ; If no breakpoint is chosen (e.g., if B was
-            bcc SetupVec        ;   by itself), just clear the breakpoint
+SetBreak:   bcs set_bp
+            lda INBUFFER
+            beq show_bp
+            cmp #"-"
+            bne vec_r
+            jsr ClearBP
+            jmp SetupVec
+show_bp:    lda BREAKPOINT+2    ; Is a breakpoint set?
+            beq vec_r           ; If not, just return
+            lda BREAKPOINT      ; If so, populate working address with
+            sta W_ADDR          ;   breakpoint, and show the line of code
+            lda BREAKPOINT+1    ;   ,,
+            sta W_ADDR+1        ;   ,,
+            jmp showcode        ;   ,,
+set_bp:     jsr ClearBP         ; Clear the old breakpoint, if it exists
             lda W_ADDR          ; Add a new breakpoint at the working address
             sta BREAKPOINT      ; ,,
             lda W_ADDR+1        ; ,,
@@ -1177,7 +1192,7 @@ SetBreak:   php
             sta (W_ADDR),y      ;   ,,
             lda #CRSRUP         ; Cursor up to overwrite the command
             jsr CHROUT          ; ,,
-            jsr DirectMode      ; When run inside a BASIC program, skip the
+showcode:   jsr DirectMode      ; When run inside a BASIC program, skip the
             bne SetupVec        ;   BRK line display
             ldx #$01            ; List a single line for the user to review
             jsr ListLine        ; ,,
@@ -1193,7 +1208,7 @@ SetupVec:   lda #<main          ; Intercept GONE to process wedge
             sta CBINV           ; ,,
             lda #>Break         ; ,,
             sta CBINV+1         ; ,,
-            rts
+vec_r:      rts
 
 ; BRK Trapper
 ; Replaces the default BRK handler. Gets registers from hardware interrupt
@@ -1575,8 +1590,8 @@ cp_pos:     ldx $47             ; Store the floating-point number in FAC1 to
             jsr STORFAC         ;   ,,
 cp2bas_r:   rts
             
-; Assign or Initialize Labels
-Labels:     lda INBUFFER 
+; Assign or Initialize Symbols
+Symbols:    lda INBUFFER 
             bne set_lab         ; If the tool is alone, show the symbol table
             jmp LabelList       ; ,,
 set_lab:    jsr ResetIn
@@ -1610,7 +1625,7 @@ init_r:     rts
 ; Error (all symbols used, or bad symbol) if Carry clear
 SymbolIdx:  cmp #FWD_LABEL
             bne sym_range
-            ldy #MAX_LAB-1
+            ldy #MAX_SYM-1
             lda #FWD_LABEL+$80
             pha
             lda IDX_IN
@@ -1634,12 +1649,12 @@ bad_label:  clc
             rts      
 good_label: ora #$80            ; High bit set indicates symbol is defined
             pha
-            ldy #MAX_LAB-2      ; See if the label is already in the table
+            ldy #MAX_SYM-2      ; See if the label is already in the table
 -loop:      cmp SYMBOL_D,y      ; ,,
             beq sym_found       ; ,,
             dey                 ; ,,
             bpl loop            ; ,,
-            ldy #MAX_LAB-2      ; If the symbol isn't already in use, look for
+            ldy #MAX_SYM-2      ; If the symbol isn't already in use, look for
 -loop:      lda SYMBOL_D,y      ;   an empty record
             beq sym_found       ;   ,,
             dey                 ;   ,,
@@ -1670,7 +1685,7 @@ show_label: jsr LabListCo       ; Add elements common to both listed item
 next_label: pla
             tax
             inx
-            cpx #MAX_LAB
+            cpx #MAX_SYM
             bne loop
             jsr ResetOut        ; Show the value of the Command Pointer
             jsr Space           ; ,,
@@ -2282,23 +2297,20 @@ get_name:   jsr CharGet         ; Get the next two characters after the quote
             beq cfound          ; Both match, so the menu item is found
 mnext:      dey                 ; Iterate
             bpl loop            ; ,,
-ShowMenu:   lda #<AddressTxt    ; Before showing the menu, show the current
-            ldy #>AddressTxt    ;   plug-in address
-            jsr PrintStr        ;   ,,
-            jsr ResetOut        ;   ,,
-            lda USER_VECT+1     ;   ,,
-            jsr HexOut          ;   ,,
-            lda USER_VECT       ;   ,,
-            jsr HexOut          ;   ,,
-            jsr PrintBuff       ;   ,,
-            jsr PlugType        ; Show the type of plug-in for the user's
+ShowMenu:   jsr PlugType        ; Show the type of plug-in for the user's
             bmi list_plug       ;   convenience
             lda #<NormalTxt     ;   ,,
             ldy #>NormalTxt     ;   ,,
             jmp show_type       ;   ,,
 list_plug:  lda #<ListTxt       ;   ,,
             ldy #>ListTxt       ;   ,,
-show_type:  jsr PrintStr        ;   ,,   
+show_type:  jsr PrintStr        ;   ,,  
+            jsr ResetOut        ; Show the current address of the plug-in 
+            lda USER_VECT+1     ;   ,,
+            jsr HexOut          ;   ,,
+            lda USER_VECT       ;   ,,
+            jsr HexOut          ;   ,,
+            jsr PrintBuff       ;   ,,
             jsr ShowUsage+1     ; Show the usage template
             lda #<MenuText      ; The string wasn't found, so show menu
             ldy #>MenuText      ; ,,
@@ -2839,13 +2851,13 @@ ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
             .byte <SetCP-1,<BASICStage-1,<PlugIn-1
             .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
-            .byte <Help-1,<PlugMenu-1,<Labels-1,<DEF-1
+            .byte <Help-1,<PlugMenu-1,<Symbols-1,<DEF-1
 ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
             .byte >SetCP-1,>BASICStage-1,>PlugIn-1
             .byte >Assemble-1,>Register-1,>Directory-1,>List-1,>Compare-1
-            .byte >Help-1,>PlugMenu-1,>Labels-1,>DEF-1
+            .byte >Help-1,>PlugMenu-1,>Symbols-1,>DEF-1
 
 ; Plug-In Menu Data           
 MenuText:   .asc LF,"PLUG-IN MENU",LF,LF
@@ -2857,9 +2869,8 @@ MenuText:   .asc LF,"PLUG-IN MENU",LF,LF
             .asc ".P ",QUOTE,"MUSIC",QUOTE,LF
             .asc ".P ",QUOTE,"WAXFER",QUOTE,LF
             .asc $00
-AddressTxt: .asc LF,"ADDR: $",$00
-NormalTxt:  .asc "TYPE: NORMAL",LF,$00
-ListTxt:    .asc "TYPE: LIST",LF,$00
+NormalTxt:  .asc "NORMAL $",$00
+ListTxt:    .asc "LIST $",$00
             
 MenuChar1:  .asc "W","R","D","M","C","M","M"
 MenuChar2:  .asc "A","E","E","L","H","U","E"
@@ -4224,23 +4235,20 @@ Oct1:       .byte 0,194,197,201,204,207,209,212,214,217,219,221,223,225
 ; https://github.com/Chysn/VIC20-wAx2/wiki/About-wAxpander
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 uConfig:    jmp ph_conf
-            .asc $00,".U 0K/3K/MAX",$00
+            .asc $00,".U 0/3/8/16/24",$00
 ph_conf:    jsr ResetIn
             jsr CharGet
-            cmp #"0"
-            beq GO0K
-            cmp #"3"
-            beq GO3K
-            cmp #"M"
-            beq GO24K
-            ldy #6
+            ldy #4
+-loop:      cmp ExpKey,y
+            beq expfound
+            dey
+            bpl loop
             rts
-GO0K:       lda #16
-            .byte $3c           ; TOP (skip word)
-GO3K:       lda #4
+expfound:   lda MemLo,y
             sta $0282
-            lda #30
+            lda MemHi,y
             sta $0284
+            lda ScrHi,y
             sta $0288
 soft_reset: jsr $fd52           ; restore default I/O vectors
             jsr $fdf9           ; initialize I/O registers
@@ -4253,10 +4261,10 @@ soft_reset: jsr $fd52           ; restore default I/O vectors
             txs                 ; Set stack pointer
             jsr Install         ; Re-install wAx
             jmp $c474
-GO24K:      lda #$12
-            sta $0282
-            lda #$80
-            sta $0284
-            lda #$10
-            sta $0288
-            jmp soft_reset
+
+; Memory settings table
+; For             0K  3K  8K  16K 24K
+ExpKey:     .asc  "0","3","8","1","2"
+MemLo:      .byte $10,$04,$12,$12,$12
+MemHi:      .byte $1e,$1e,$40,$60,$80
+ScrHi:      .byte $1e,$1e,$10,$10,$10
