@@ -2885,7 +2885,7 @@ BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF,"D 6502 DIS E 6502+EXT",LF
             .asc "A ASSEMBLE R REGISTER",LF
             .asc "G GO       B BRKPOINT",LF
-            .asc "R MEMORY   I TEXT",LF
+            .asc "M MEMORY   I TEXT",LF
             .asc "% BINARY   = ASSERT",LF
             .asc "T TRANSFER C COMPARE",LF,$00
 HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
@@ -2893,7 +2893,7 @@ HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
             .asc "P INSTALL  U PLUG-IN",LF
-            .asc "X EXIT",LF,$00
+            .asc "X EXIT     ? THIS",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
