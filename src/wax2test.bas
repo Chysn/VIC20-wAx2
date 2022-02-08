@@ -269,7 +269,7 @@
 602 .@-
 604 .@a 02a5 ; test def
 605 .* 6800 ; set pc
-606 .,; test fwd ref
+606 rem test fwd ref
 607 .a *    jsr @&
 608 .a *    lda #<@&
 609 .a *    ldx #>@&
@@ -277,7 +277,7 @@
 611 .a * @f lda (<@d,x)
 612 .a * @2
 613 .a * @&  ;resolve fwd
-614 .,; test back
+614 rem test back
 615 .a * @x jmp (@@)
 616 .a *    jsr @x
 617 .a * @@
@@ -286,9 +286,9 @@
 620 .a *    lda @f
 621 .a *    eor >@a,x
 622 .a * @d "jej"
-623 .,; unresolved
+623 rem unresolved
 624 .a *    jmp @u
-625 .,; verify memory
+625 rem verify memory
 626 .= 6800 200b68a9
 627 .= 6804 0ba26890
 628 .= 6808 02a1196c
@@ -302,7 +302,7 @@
 705 print"  testing...     "
 710 .@-
 712 p = 0
-715 ur% = 0 : p = p + 1
+715 p = p + 1
 717 if p > 2 then print "pass error":stop
 720 .* 6800
 725 for i = 1 to 24

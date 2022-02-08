@@ -668,7 +668,7 @@ asm_error:  jmp AsmError
 
 ; Assemble 6502 Instruction
 ; Or data
-Assemble:   bcc asm_r           ; Bail if the address is no good
+Assemble:   bcc asm_error       ; Bail if the address is no good
             lda INBUFFER+4      ; If the user just pressed Return at the prompt,
             beq asm_r           ;   go back to BASIC
 -loop:      jsr CharGet         ; Look through the buffer for either
@@ -1542,10 +1542,12 @@ b102h_r:    jmp PrintBuff
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Symbols
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 ; Set Command Pointer
-SetCP:      lda #0              ; Reset forward reference overflow counter
-            sta OVERFLOW_F      ; ,,
-            bcs Addr2CP         ; Do only that if no address provided
-            rts
+SetCP:      bcc cp2bas_r        ; Do nothing if no value provided
+            lda #0              ;   ,,
+            sta OVERFLOW_F      ;   ,,
+            jsr DirectMode      ; If * addr was issued in BASIC, reset forward
+            beq Addr2CP         ;   reference overflow counter, and set UR%
+            jsr URtoBASIC       ;   ,,
 Addr2CP:    lda W_ADDR          ; Move working address to Command Pointer
             sta C_PT            ; ,,
             lda W_ADDR+1        ; ,,
@@ -1571,7 +1573,7 @@ CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
 cp_pos:     ldx $47             ; Store the floating-point number in FAC1 to
             ldy $48             ;   the variable memory
             jsr STORFAC         ;   ,,
-cp2bas_r:   rts                 ; ,,
+cp2bas_r:   rts
             
 ; Assign or Initialize Labels
 Labels:     lda INBUFFER 
@@ -1847,7 +1849,7 @@ find_empty: ldx #$00            ; Now, search ALL the records, this time looking
 overflow:   inc OVERFLOW_F      ; Increment overflow counter if no records are
             beq overflow        ;   left; if it rolls to 0, set it to 1 instead
             jsr DirectMode      ; If the overflow happens in direct mode, show
-            bne set_ur          ;   the Symbol Error. In BASIC, this condition
+            bne URtoBASIC       ;   the Symbol Error. In BASIC, this condition
             jmp SymError        ;   can be caught, so keep going for multi-pass
 empty_rec:  tya
             ora #$80            ; Set the high bit to indicate record in use
@@ -1861,7 +1863,10 @@ store_rec:  sta SYMBOL_F,x      ; Store the label index in the record
             lda W_ADDR+1        ;   later resolution
             sta SYMBOL_FH,x     ;   ,,
 addfwd_r:   rts
-set_ur:     lda #"U"+$80        ; During BASIC operation, set UR% to the
+
+; Set UR%
+; To value of OVERFLOW_F
+URtoBASIC:  lda #"U"+$80        ; During BASIC operation, set UR% to the
             sta $45             ;   number of unresolved forward references
             lda #"R"+$80        ;   on overflow condition. This allows
             sta $46             ;   multi-pass assembly
@@ -2893,7 +2898,7 @@ HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
             .asc "P INSTALL  U PLUG-IN",LF
-            .asc "X EXIT     ? THIS",LF,$00
+            .asc "X EXIT     ? HELP",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
