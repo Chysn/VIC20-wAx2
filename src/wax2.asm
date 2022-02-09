@@ -226,7 +226,7 @@ jShowAddr:  jmp ShowAddr        ; a021
 jShowCP:    jmp ShowCP          ; a024
 jAddr2CP:   jmp Addr2CP         ; a027
 jPrintStr:  jmp PrintStr        ; a02a
-jNextList:  jmp NextList        ; a02d
+jNext:      jmp Next            ; a02d
 jDirectMode:jmp DirectMode      ; a030
 jSizeOf:    jmp SizeOf          ; a033
 jDisasm:    jmp Disasm          ; a036
@@ -405,18 +405,18 @@ ListLine:   txa
             beq to_int          ; ,,
             jsr Space           ; Space goes after address for Disassembly
             jsr Disasm
-            jmp NextList
+            jmp Next
 to_mem:     lda #":"            ; Memory editor character goes after address
             jsr CharOut         ; ,,
             jsr Memory          ; Do Memory display
-            jmp NextList
+            jmp Next
 to_bin:     jsr CharOut         ; Binary editor character goes after address
             jsr BinaryDisp      ; Do Binary display
-            jmp NextList
+            jmp Next
 to_int:     jsr TextDisp        ; Do text display
-            jmp NextList
+            jmp Next
 to_usr:     jmp (USER_VECT)
-NextList:   jsr PrintBuff      
+Next:       jsr PrintBuff      
             pla
             tax
             bpl skip_range      ; If X bit 7 is clear, don't check range
