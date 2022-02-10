@@ -807,7 +807,9 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             bcc insert_hex      ;   100 or more, advance the index again to
             inc IDX_IN          ;   account for the third digit.
             ; Fall through to insert_hex
-insert_hex: jsr Arithmetic
+insert_hex: lda IDX_IN          ; Save starting index for arithmetic
+            sta PREV_IDX        ; ,,
+            jsr Arithmetic      ; Perform arithmetic on operand and code
             jsr ResetOut        ; Store the hex value of the operand after the
             sta INBUFFER+11     ;   #, so it can be matched by Hypotest.
             lda #"$"            ;   End it with 0 as a line delimiter
@@ -2429,7 +2431,7 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
 ; Get two characters from the buffer and evaluate them as a hex byte
 HexGet   :  jsr CharGet
             jsr Char2Nyb
-            bcc buff2_r         ; Return with Carry clear if invalid
+            bcc hexget_r        ; Return with Carry clear if invalid
             asl                 ; Multiply high nybble by 16
             asl                 ;   ,,
             asl                 ;   ,,
@@ -2437,10 +2439,10 @@ HexGet   :  jsr CharGet
             sta WORK
             jsr CharGet
             jsr Char2Nyb
-            bcc buff2_r         ; Clear Carry flag indicates invalid hex
+            bcc hexget_r        ; Clear Carry flag indicates invalid hex
             ora WORK            ; Combine high and low nybbles
             ;sec                ; Set Carry flag indicates success
-buff2_r:    rts
+hexget_r:   rts
             
 ; Increment Working Address
 ; Get the EA byte and advance EA by one
