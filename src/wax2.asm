@@ -72,8 +72,8 @@ T_USR       = "U"               ; Tool character U for user plug-in
 T_MEN       = "P"               ; Tool character P for plug-in menu
 T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
-LABEL       = "@"               ; Label sigil (@)
-FWD_LABEL   = "&"               ; Forward label sigil (&) 
+SIGIL       = "@"               ; Symbol sigil (@)
+FWD_NAME    = "&"               ; Forward reference name (&) 
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -283,12 +283,13 @@ main:       jsr CHRGET          ; Get the character from input or BASIC
             iny                 ; Else, check the characters in turn
             cpy #TOOL_COUNT     ; ,,
             bne loop            ; ,,
-            lda #CRSRUP         ; Show error ? for unknown tool
-            jsr CHROUT          ; ,,
-            lda #"?"            ; ,,
-            jsr CHROUT          ; ,,
-            lda #LF             ; ,,
-            jsr CHROUT          ; ,,     
+            jsr DirectMode      ; In a BASIC program, respond to illegal
+            beq cmd_err         ;   commands with SYNTAX ERROR
+            jmp SYNTAX_ERR      ;   ,,
+cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
+            jsr CHROUT          ;   with a question mark
+            lda #LF             ;   ,,
+            jsr CHROUT          ;   ,,     
 to_prompt:  jsr CHRGOT          ; Restore flags for the found character
             jmp Return          ; Show prompt (maybe) and warm start
 exit:       jsr CHRGOT          ; Restore flags for the found character
@@ -664,7 +665,7 @@ BinaryEdit: sta TOOL_CHR        ; Update tool character for prompt
 ; https://github.com/Chysn/VIC20-wAx2/wiki/6502-Assembler
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Centrally-located error jump
-asm_error:  jmp AsmError
+asm_error:  jmp ASM_ERROR
 
 ; Assemble 6502 Instruction
 ; Or data
@@ -679,8 +680,8 @@ ch_return:  lda INBUFFER+4      ; If user pressed RETURN at an assembly prompt,
             ldy IDX_IN          ; If we've gone past the first character after
             cpy #$05            ;   the address, no longer pay attention to
             bne op_parts        ;   pre-data stuff
-            cmp #LABEL          ; @ = New label
-            beq DefLabel        ; ,,
+            cmp #SIGIL          ; @ = New symbol
+            beq DefSymbol       ; ,,
             cmp #":"            ; Colon = Byte entry (route to hex editor)
             bne ch_txt          ; ,,
             jmp MemEdit         ; ,,
@@ -717,18 +718,18 @@ nextline:   jsr ClearBP         ; Clear breakpoint on successful assembly
 asm_r:      rts
 
 ; Define Label
-; Create a new label entry, and resolve any forward references to the
-; new label.
-DefLabel:   jsr CharGet         ; Get the next character after the label sigil
-            jsr SymbolIdx       ; Get a symbol index for the label in A
-            bcs have_label      ;
-            jmp SymError        ; Error if no symbol index could be secured
-have_label: jsr IsDefined       ; If this label is not yet defined, then
+; Create a new symbol entry, and resolve any forward references to the
+; new symbol.
+DefSymbol:  jsr CharGet         ; Get the next character after the symbol sigil
+            jsr SymbolIdx       ; Get an index for the symbol in A
+            bcs have_sym        ;
+            jmp SYM_ERROR       ; Error if no symbol index could be secured
+have_sym:   jsr IsDefined       ; If this symbol is not yet defined, then
             bne is_def          ;   resolve the forward reference, if it
             sty IDX_SYM         ;   was used
             jsr ResolveFwd      ;   ,,
             ldy IDX_SYM
-is_def:     lda W_ADDR          ; Set the label address
+is_def:     lda W_ADDR          ; Set the symbol address
             sta SYMBOL_AL,y     ; ,,
             lda W_ADDR+1        ; ,,
             sta SYMBOL_AH,y     ; ,,
@@ -737,8 +738,8 @@ is_def:     lda W_ADDR          ; Set the label address
             bne pull_code
             ldx #$00            ; Return to BASIC or prompt for the same
             jmp Prompt          ;   address again
-pull_code:  ldy #$00            ; If there's code after the label, pull it
--loop:      iny                 ;   two spaces, replacing the label. This
+pull_code:  ldy #$00            ; If there's code after the symbol, pull it
+-loop:      iny                 ;   two spaces, replacing the symbol. This
             lda INBUFFER+5,y    ;   positions the instruction for use with
             sta INBUFFER+3,y    ;   Hypotest later
             bne loop            ;   ,,
@@ -764,7 +765,7 @@ try_slash:  cmp #"/"            ; If it's a quote preceeded by a slash, treat
             sta INBUFFER,y
             jsr CharGet
             cmp #QUOTE
-            bne AsmError
+            bne ASM_ERROR
             jsr CharGet
             jsr PETtoScr
             jmp close_qu
@@ -774,12 +775,12 @@ try_quote:  cmp #QUOTE          ; If it's a double quote, make sure it's a one
 close_qu:   sta OPERAND         ;   hex for the hypotester
             jsr CharGet         ;   ,,
             cmp #QUOTE          ;   ,,
-            bne AsmError        ;   ,, Error if the second quote isn't here
+            bne ASM_ERROR       ;   ,, Error if the second quote isn't here
             beq insert_hex      ;   ,,
 try_binary: cmp #"%"            ; If it's a binary prefix sigil %, convert
             bne try_base10      ;   the eight binary bits and, if valid,
             jsr BinaryByte      ;   set the operand and convert it to hex
-            ;bcc AsmError       ;   ,, (errors at BinaryByte)
+            ;bcc ASM_ERROR      ;   ,, (errors at BinaryByte)
             sta OPERAND         ;   ,,
             bcs insert_hex      ;   ,,
 try_base10: lda $7b             ; Now look for a base-10 number by temporarily
@@ -791,11 +792,11 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             sty $7a             ;   ,, 
             sta $7b             ;   ,,
             jsr CHRGOT          ; Call CHRGOT to start verifying numbers
-            bcs AsmError        ;   ,,
+            bcs ASM_ERROR       ;   ,,
             jsr ASCFLT          ; Convert the buffer text into FAC1
             jsr MAKADR          ; Convert FAC1 to 16-bit unsigned integer
             cmp #$00            ; High byte from MAKADR is in A
-            bne AsmError        ; Error if high byte is set; too big for immed
+            bne ASM_ERROR       ; Error if high byte is set; too big for immed
             sty OPERAND         ; Low byte from MAKADR is in Y
             pla                 ; Put the CHRGET buffer back so BASIC doesn't
             sta $7a             ;   freak out
@@ -822,15 +823,15 @@ insert_hex: jsr Arithmetic
 ; Error Message
 ; Invalid opcode or formatting (ASSEMBLY)
 ; Failed boolean assertion (MISMATCH, borrowed from ROM)
-AsmError:   ldx #$00            ; ?ASSMEBLY ERROR
+ASM_ERROR:  ldx #$00            ; ?ASSMEBLY ERROR
             .byte $3c           ; TOP (skip word)
-MisError:   ldx #$01            ; ?MISMATCH ERROR
+MIS_ERROR:  ldx #$01            ; ?MISMATCH ERROR
             .byte $3c           ; TOP (skip word)
-SymError:   ldx #$02            ; ?SYMBOL ERROR
+SYM_ERROR:  ldx #$02            ; ?SYMBOL ERROR
             .byte $3c           ; TOP (skip word)
-CannotRes:  ldx #$03            ; ?CAN'T RESOLVE ERROR 
+RES_ERROR:  ldx #$03            ; ?CAN'T RESOLVE ERROR 
             .byte $3c           ; TOP (skip word)
-OutOfRange: ldx #$04            ; ?TOO FAR ERROR
+TOO_FAR_ER: ldx #$04            ; ?TOO FAR ERROR
             lda ErrAddr_L,x
             sta ERROR_PTR
             lda ErrAddr_H,x
@@ -992,7 +993,7 @@ ComputeRB:  lda W_ADDR+1        ; Stash the working address, as the offset
             beq pos             ;   ,,
 rb_err:     lda IGNORE_RB
             bne compute_r
-            jmp OutOfRange      ; BASIC error if out of range
+            jmp TOO_FAR_ER      ; ?TOO FAR error if out of range
 neg:        cpy #$80
             bcc rb_err
             rts
@@ -1099,7 +1100,7 @@ test_r:     tya                 ; Update working address with number of
             adc W_ADDR+1        ;   ,,
             sta C_PT+1          ;   ,,
             jmp CPtoBASIC
-test_err:   jmp MisError
+test_err:   jmp MIS_ERROR       ; ?MISMATCH ERROR on failed test
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; GO
@@ -1593,26 +1594,26 @@ cp2bas_r:   rts
 ; Assign or Initialize Symbols
 Symbols:    lda INBUFFER 
             bne set_lab         ; If the tool is alone, show the symbol table
-            jmp LabelList       ; ,,
+            jmp SymbolList      ; ,,
 set_lab:    jsr ResetIn
             jsr CharGet
             cmp #"-"            ; If - follows the tool, initialize the symbol
             beq init_clear      ;   table
             jsr SymbolIdx       ; Is this a valid symbol, and is there memory
-            bcc label_err       ;   to assign it?
+            bcc sym_err         ;   to assign it?
             jsr HexGet   
-            bcc label_err
+            bcc sym_err
             sta SYMBOL_AH,y
             jsr HexGet          ; Get the low byte of the value
             bcs llow_ok         ; If there's no low byte provided, then the
             lda SYMBOL_AH,y     ;   only valid byte is treated as the low
             tax                 ;   byte, and the high byte is set to 0.
             lda #0              ;   ,,
-            sta SYMBOL_AH,y     ;   This allows setting a label using an
+            sta SYMBOL_AH,y     ;   This allows setting a symbol using an
             txa                 ;   8-bit value.
 llow_ok:    sta SYMBOL_AL,y
             rts            
-label_err:  jmp SymError        
+sym_err:    jmp SYM_ERROR        
 init_clear: lda #$00            ; Initialize bytes for the symbol table
             ldy #ST_SIZE-1      ;   See the Symbol Table section at the top for
 -loop:      sta SYMBOL_D,y      ;   information about resizing or relocating the
@@ -1623,10 +1624,10 @@ init_r:     rts
 ; Get Symbol Index
 ; Return symbol index in Y and set Carry
 ; Error (all symbols used, or bad symbol) if Carry clear
-SymbolIdx:  cmp #FWD_LABEL
+SymbolIdx:  cmp #FWD_NAME
             bne sym_range
             ldy #MAX_SYM-1
-            lda #FWD_LABEL+$80
+            lda #FWD_NAME+$80
             pha
             lda IDX_IN
             cmp #5
@@ -1635,21 +1636,21 @@ SymbolIdx:  cmp #FWD_LABEL
             sta SYMBOL_AL,y
             sta SYMBOL_AH,y
             jmp sym_found
-sym_range:  cmp #"@"            ; Allowed label names are 0-9, A-Z, and @
-            beq good_label      ; ,,
+sym_range:  cmp #"@"            ; Allowed symbol names are 0-9, A-Z, and @
+            beq good_name       ; ,,
             cmp #"0"            ; ,,
-            bcc bad_label       ; ,,
+            bcc bad_name        ; ,,
             cmp #"Z"+1          ; ,,
-            bcs bad_label       ; ,,
+            bcs bad_name        ; ,,
             cmp #"9"+1          ; ,,
-            bcc good_label      ; ,,
+            bcc good_name       ; ,,
             cmp #"A"            ; ,,
-            bcs good_label      ; ,,
-bad_label:  clc
+            bcs good_name       ; ,,
+bad_name:   clc
             rts      
-good_label: ora #$80            ; High bit set indicates symbol is defined
+good_name:  ora #$80            ; High bit set indicates symbol is defined
             pha
-            ldy #MAX_SYM-2      ; See if the label is already in the table
+            ldy #MAX_SYM-2      ; See if the name is already in the table
 -loop:      cmp SYMBOL_D,y      ; ,,
             beq sym_found       ; ,,
             dey                 ; ,,
@@ -1660,14 +1661,14 @@ good_label: ora #$80            ; High bit set indicates symbol is defined
             dey                 ;   ,,
             bpl loop            ;   ,,
             pla                 ; No empty symbol is found; all symbols are in        
-            jmp bad_label       ;   use. Return for error
+            jmp bad_name        ;   use. Return for error
 sym_found:  pla
-            sta SYMBOL_D,y      ; Populate the symbol label table with the name
+            sta SYMBOL_D,y      ; Populate the symbol table with the name
             sec                 ; Set Carry flag indicates success
             rts            
             
-; Show Label List           
-LabelList:  ldx #$00
+; Show Symbols List           
+SymbolList: ldx #$00
 -loop:      txa                 ; Save the iterator from PrintBuff, etc.
             pha                 ; ,,
             tay                 ; ,,
@@ -1676,13 +1677,13 @@ LabelList:  ldx #$00
             lda SYMBOL_AH,y     ; ,,
             sta W_ADDR+1        ; ,,
             lda W_ADDR          ; If this symbol is undefined (meaning, it is
-            bne show_label      ;   $0000, then skip it)
+            bne show_sym        ;   $0000, then skip it)
             lda W_ADDR+1        ;   ,,
             beq undefd          ; Undefined, but it might be a forward reference
-show_label: jsr LabListCo       ; Add elements common to both listed item
+show_sym:   jsr SymListCo       ; Add elements common to both listed item
             jsr ShowAddr
             jsr PrintBuff
-next_label: pla
+next_sym:   pla
             tax
             inx
             cpx #MAX_SYM
@@ -1706,7 +1707,7 @@ next_label: pla
 lablist_r:  jsr PrintBuff       ;   ,,
             rts
 undefd:     stx IDX_SYM
-            ldy #$00            ; Forward reference count for this label
+            ldy #$00            ; Forward reference count for this symbol
             ldx #$00            ; Forward record index
 -loop:      lda SYMBOL_F,x
             bpl next_undef
@@ -1718,23 +1719,23 @@ next_undef: inx
             cpx #MAX_FWD
             bne loop
             cpy #$00
-            beq next_label
+            beq next_sym
 show_fwd:   tya
             pha
             ldx IDX_SYM
-            jsr LabListCo
+            jsr SymListCo
             jsr ReverseOn
             lda #"?"
             jsr CharOut
             pla
             jsr HexOut
 fwd_d:      jsr PrintBuff
-            jmp next_label
+            jmp next_sym
 
-; Label List Common            
-LabListCo:  jsr ResetOut
+; Symbol List Common            
+SymListCo:  jsr ResetOut
             jsr Space
-            lda #LABEL
+            lda #SIGIL
             jsr CharOut
             lda SYMBOL_D,x
             and #$7f
@@ -1777,7 +1778,7 @@ expand_r:   jmp Transcribe
 ResolveFwd: lda IDX_SYM
             ora #$80            ; Set high bit, which is what we look for here
             ldx #$00            ; First order of business is finding unresolved
--loop:      cmp SYMBOL_F,x      ;   records that match the label
+-loop:      cmp SYMBOL_F,x      ;   records that match the symbol
             beq fwd_used
             ora #$40            ; Also check for high-byte specifier
             cmp SYMBOL_F,x
@@ -1787,7 +1788,7 @@ ResolveFwd: lda IDX_SYM
             cpx #MAX_FWD
             bne loop
             rts                 ; Label not found in forward reference table
-fwd_used:   lda SYMBOL_FL,x     ; A forward reference for this label has been
+fwd_used:   lda SYMBOL_FL,x     ; A forward reference for this symbol has been
             sta CHARAC          ;   found; store the address in zero page for
             lda SYMBOL_FH,x     ;   updating the code at this address.
             sta CHARAC+1        ;   ,,
@@ -1795,7 +1796,7 @@ fwd_used:   lda SYMBOL_FL,x     ; A forward reference for this label has been
             lda (CHARAC),y      ;   should be an instruction opcode
             jsr Lookup          ; Look it up
             bcs get_admode      ; ,,
-            jmp CannotRes       ; Not a valid instruction; CAN'T RESOLVE ERROR
+            jmp RES_ERROR       ; Not a valid instruction; ?CAN'T RESOLVE ERROR
 get_admode: cmp #RELATIVE       ; If it's a relative branch instruction,
             beq load_rel        ;   calculate the branch offset
             cmp #ABSOLUTE       ; Two bytes will be replaced, so make sure
@@ -1808,7 +1809,7 @@ get_admode: cmp #RELATIVE       ; If it's a relative branch instruction,
             beq load_abs        ;   ,,
             cmp #IMPLIED        ; If an implied mode instruction is somehow
             bne load_immed      ;   being resolved, throw ASSEMBLY ERROR
-            jmp CannotRes       ;   ,,
+            jmp RES_ERROR       ;   ,,
 load_abs:   lda W_ADDR          ; For an absolute mode instruction, add the
             ldy #$01            ;   value of the reference to the existing
             clc                 ;   value of the operand, to account for
@@ -1827,7 +1828,7 @@ load_rel:   lda W_ADDR          ; The target is the current working address
             ldy #$01            ; Store the computed offset in the forward
             sta (CHARAC),y      ;   reference operand address
             jmp clear_back      ; Go back and see if there are more to resolve
-load_immed: lda #$40            ; Check bit 6 of the label byte of the forward
+load_immed: lda #$40            ; Check bit 6 of the symbol byte of the forward
             and SYMBOL_F,x      ;   reference symbol record. If it's set, it
             beq load_low        ;   means that the user wants the high byte
             lda W_ADDR+1        ;   of the symbol target
@@ -1842,7 +1843,7 @@ clear_back: lda #$00            ; Clear the forward reference table record for
             jmp ResolveFwd      ;   forward references
             
 ; Add Forward Record
-; For label in Y            
+; For symbol in Y            
 ; Each forward reference record consists of three bytes-
 ; Offset 0 - Label Index OR %10000000
 AddFwdRec:  ldx #$00            ; Search the forward symbol table for a
@@ -1865,14 +1866,14 @@ overflow:   inc OVERFLOW_F      ; Increment overflow counter if no records are
             beq overflow        ;   left; if it rolls to 0, set it to 1 instead
             jsr DirectMode      ; If the overflow happens in direct mode, show
             bne URtoBASIC       ;   the Symbol Error. In BASIC, this condition
-            jmp SymError        ;   can be caught, so keep going for multi-pass
+            jmp SYM_ERROR       ;   can be caught, so keep going for multi-pass
 empty_rec:  tya
             ora #$80            ; Set the high bit to indicate record in use
-            ldy BYTE_MOD        ; If the label was prefixed with >, then mark
+            ldy BYTE_MOD        ; If the symbol was prefixed with >, then mark
             cpy #HIGH_BYTE      ;   this forward record to use the high byte
             bne store_rec       ;   on resolution, by setting bit 6 of the
-            ora #$40            ;   symbol forward label entry
-store_rec:  sta SYMBOL_F,x      ; Store the label index in the record
+            ora #$40            ;   symbol forward reference entry
+store_rec:  sta SYMBOL_F,x      ; Store the symbol index in the record
             lda W_ADDR          ; Store the current working address in the
             sta SYMBOL_FL,x     ;   forward reference record for (hopefully)
             lda W_ADDR+1        ;   later resolution
@@ -2536,7 +2537,7 @@ next_bit:   pla
             lda TEMP_CALC
             sec
             rts
-bad_bin:    jmp AsmError
+bad_bin:    jmp ASM_ERROR
  
 ; Show Working Address
 ; 16-bit hex address at working address          
@@ -2632,15 +2633,15 @@ ch_interp:  cmp #"'"            ; Replace a variable name with a hex value
             jmp InterpVar       ; ,,
 ch_comment: cmp #";"            ; If it's a comment, then quit transcribing
             beq comment         ;   unless we're in quote mode
-            cmp #HIGH_BYTE      ; If it's > or <, it modifies the next label
+            cmp #HIGH_BYTE      ; If it's > or <, it modifies the next symbol
             bne ch_low          ; ,,
             sta BYTE_MOD        ; ,,
             jmp post_mx         ; ,, Get more, but don't clear the modifier
 ch_low:     cmp #LOW_BYTE       ; ,,
-            bne ch_label        ; ,,
+            bne ch_sym          ; ,,
             sta BYTE_MOD        ; ,,
             jmp post_mx         ; ,, Get more, but don't clear the modifier
-ch_label:   cmp #LABEL          ; Handle symbolic labels
+ch_sym:     cmp #SIGIL          ; Handle symbols
             beq handle_sym      ; ,,
             cmp #QUOTE          ; If a quote is found, modify CHRGET so that
             bne ch_token        ;   spaces are no longer filtered out
@@ -2657,36 +2658,33 @@ ch_token:   cmp #$80            ; Is the character in A a BASIC token?
 x_add:      jsr AddInput        ; Add the text to the buffer and get more
             jmp Transcribe      ; ,,
 xscribe_r:  jmp AddInput        ; Add the final zero, and fix CHRGET...
-handle_sym: ldy $83             ; Don't handle symbols if the label is in quotes
+handle_sym: ldy $83             ; Don't handle symbols if the name is in quotes
             cpy #$06            ;   (as in an immediate operand, or text entry)
             beq x_add           ;   ,,
-            ldy IDX_IN          ; If the label character occurs deep in the
-            cpy #$0d            ;   input, don't handle a symbol. It's in the
-            bcs x_add           ;   memory dump display.            
-            lda IDX_IN          ; If . is the first character in the input
+            lda IDX_IN          ; If @ is the first character in the input
             cmp #$06            ;   buffer after the address, defer the
             bcs start_exp       ;   symbol for handling by the assembler
-            lda #LABEL          ;   ,,
+            lda #SIGIL          ;   ,,
             jsr AddInput        ;   ,,
             jmp Transcribe      ;   ,,
-start_exp:  jsr CHRGET          ; Get the next character, the label
+start_exp:  jsr CHRGET          ; Get the next character, the symbol name
             jsr SymbolIdx       ; Get the symbol index
-            bcs get_label
-            jmp SymError        ; If not, ?SYMBOL ERROR
-get_label:  jsr IsDefined
+            bcs get_s_name
+            jmp SYM_ERROR       ; If not, ?SYMBOL ERROR
+get_s_name: jsr IsDefined
             bne go_expand
             lda IDX_IN          ; The symbol has not yet been defined; parse
             pha                 ;   the first hex numbers to set the program
             jsr RefreshEA       ;   counter, then return the input index to
             pla                 ;   its original position
             sta IDX_IN          ;   ,,
-            jsr AddFwdRec       ; Add forward reference record for label Y
+            jsr AddFwdRec       ; Add forward reference record for symbol Y
             inc IGNORE_RB       ; Set relative branch ignore flag
 go_expand:  jmp ExpandSym       ; Use $0000 as a placeholder
 comment:    ldy $83
             cpy #$06
             beq add_only
-            lda #$06            ; Move into quote mode so that label characters
+            lda #$06            ; Move into quote mode so that symbol characters
             sta $83             ; are no longer expanded
             lda #$00
 add_only:   beq x_add
@@ -2845,7 +2843,7 @@ pi:         lda #$5E
 ; ToolTable contains the list of tools and addresses for each tool
 ToolTable:  .byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
             .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR
-            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,LABEL,$96
+            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,SIGIL,$96
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
