@@ -268,7 +268,7 @@ has_exp:    sei                 ; Just in case there's an IRQ handler here
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; MAIN PROGRAM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;              
-main:       jsr CHRGET          ; Get the character from input or BASIC
+Main:       jsr CHRGET          ; Get the character from input or BASIC
             cmp #WEDGE          ; Is it the assigned wedge character?
             bne exit            ; If not, exit gracefully
 -loop:      jsr CHRGET          ; Get the next character to scan for a tool
@@ -315,12 +315,11 @@ Prepare:    sta TOOL_CHR        ; Store the tool character
             pha                 ;   to the appropriate tool
             jsr ResetIn         ; Initialize the input index for write
             sta IGNORE_RB       ; Clear Ignore Relative Branch flag
-            lda #0              ; Clear byte modifier
-            sta BYTE_MOD        ; ,,
+            sta BYTE_MOD        ; Clear byte modifier
             jsr Transcribe      ; Transcribe from CHRGET to INBUFFER
             lda #$ef            ; $0082 BEQ $008a -> BEQ $0073 (maybe)
             sta $83             ; ,,
-RefreshEA:  jsr ResetIn         ; Re-initialize for buffer read
+RefrAddr:   jsr ResetIn         ; Re-initialize for buffer read
             jsr HexGet          ; Convert 2 characters to a byte   
             bcc main_r          ; Fail if the byte couldn't be parsed
             sta W_ADDR+1        ; Save to the W_ADDR high byte
@@ -954,12 +953,12 @@ match:      lda W_ADDR          ; Set the INSTSIZE location to the number of
             sec                 ;   bytes that need to be programmed
             sbc #OPCODE         ;   ,,
             sta INSTSIZE        ;   ,,
-            jmp RefreshEA       ; Restore the working address to target addr
+            jmp RefrAddr        ; Restore the working address to target addr
 test_rel:   lda #$0a            ; For relative branch instructions, first check
             sta IDX_OUT         ;   the name of the instruction. If that checks
             jsr IsMatch         ;   out, compute the relative branch offset and
             bcc reset           ;   insert it into memory, if it's within range
-            jsr RefreshEA       ;   ,,
+            jsr RefrAddr        ;   ,,
             jsr ComputeRB       ;   ,,
             sty OPERAND         ;   ,,
             lda #$02            ;   ,, 
@@ -989,12 +988,12 @@ ComputeRB:  lda W_ADDR+1        ; Stash the working address, as the offset
             sta W_ADDR          ; ,,
             pla                 ; ,,
             sta W_ADDR+1        ; ,,
-            cpx #$ff            ; Check the range; the difference must be between
-            beq neg             ;   $ff80 and $007f, inclusive
+            cpx #$ff            ; Check the range; the difference must be
+            beq neg             ;   between $ff80 and $007f, inclusive
             cpx #$00            ;   ,,
             beq pos             ;   ,,
-rb_err:     lda IGNORE_RB
-            bne compute_r
+rb_err:     lda IGNORE_RB       ; Allow RB target to be out-of-range ($0000)
+            bne compute_r       ;   if this is a forward reference
             jmp TOO_FAR_ER      ; ?TOO FAR error if out of range
 neg:        cpy #$80
             bcc rb_err
@@ -1203,9 +1202,9 @@ showcode:   jsr DirectMode      ; When run inside a BASIC program, skip the
 
 ; Set Up Vectors
 ; Used by installation, and also by the breakpoint manager                    
-SetupVec:   lda #<main          ; Intercept GONE to process wedge
+SetupVec:   lda #<Main          ; Intercept GONE to process wedge
             sta IGONE           ;   tool invocations
-            lda #>main          ;   ,,
+            lda #>Main          ;   ,,
             sta IGONE+1         ;   ,,
             lda #<Break         ; Set the BRK interrupt vector
             sta CBINV           ; ,,
@@ -2676,8 +2675,8 @@ start_exp:  jsr CHRGET          ; Get the next character, the symbol name
 get_s_name: jsr IsDefined
             bne go_expand
             lda IDX_IN          ; The symbol has not yet been defined; parse
-            pha                 ;   the first hex numbers to set the program
-            jsr RefreshEA       ;   counter, then return the input index to
+            pha                 ;   the first hex numbers to set the working
+            jsr RefrAddr        ;   address, then return the input index to
             pla                 ;   its original position
             sta IDX_IN          ;   ,,
             jsr AddFwdRec       ; Add forward reference record for symbol Y
