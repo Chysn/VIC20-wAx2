@@ -2581,16 +2581,19 @@ add_hexsig: lda IDX_IN          ; If the target address is being inter-
             cmp #4              ;   polated, then don't add the $
             bcc get_var         ;   ,,
             lda #"$"            ;   ,,
-            jsr AddInput        ;   ,,
-get_var:    jsr CHRGET          ; Get single-letter variable name
-            sta $45             ;   Set variable name
-            jsr CHRGET          ; Get second letter of variable name
-            cmp #","+1          ; Comma, close paren, or 0, mean it's a one-
-            bcs two_ltr         ;   letter variable name.
-            dec $7a             ; -1 the search address for correct transcribe
-            lda #0              ; Force second variable name byte to 0
-two_ltr:    sta $46             ;   Set variable name
-            jsr FNDVAR          ; Find variable
+            jsr AddInput        ;   ,,          
+get_var:    ldy #0
+-loop:      lda #0
+            sta $45,y
+            jsr CHRGET
+            cmp #"'"
+            beq find_var
+            sta $45,y
+            iny
+            cpy #3
+            bne loop
+            jmp SYNTAX_ERR                        
+find_var:   jsr FNDVAR          ; Find variable
             lda $47             ; Move found variable to FAC
             ldy $48             ; ,,
             jsr LODFAC          ; ,,
@@ -2912,7 +2915,7 @@ HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
             .asc "P INSTALL  U PLUG-IN",LF
-            .asc "X EXIT     ? HELP",LF,$00
+            .asc "X EXIT",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
