@@ -42,6 +42,7 @@ DEF_DEVICE  = $08               ; Default device number
 SYM_END     = $02ff             ; Top of Symbol Table
 MAX_SYM     = 19                ; Maximum number of user symbols + 1
 MAX_FWD     = 12                ; Maximum number of forward references
+PLUGINS     = 7                 ; Number of included plug-ins
 
 ; Tool Setup
 TOOL_COUNT  = $1b               ; How many tools are there?
@@ -2281,16 +2282,16 @@ PlugMenu:   jsr ResetIn         ; Reset in to get just a single hex byte
             jsr ResetIn         ; Install plug-in by address
             jsr HexGet          ; ,,
             bcc ShowMenu        ; ,,
-            sta $06             ; ,,
+            sta USER_VECT+1     ; ,,
             jsr HexGet          ; ,,
             bcc ShowMenu        ; ,,
-            sta $05             ; ,,
+            sta USER_VECT       ; ,,
             jmp ShowUsage+1     ; Show usage, +1 to avoid PLP
 get_name:   jsr CharGet         ; Get the next two characters after the quote
             sta CurChar         ; ,,
             jsr CharGet         ; ,,
             sta CurChar+1       ; ,,
-            ldy #6              ; Y = last menu index
+            ldy #PLUGINS-1      ; Y = last menu index
 -loop       lda MenuChar1,y     ; Check first character
             cmp CurChar         ; ,,
             bne mnext           ; ,,
@@ -2314,13 +2315,30 @@ show_type:  jsr PrintStr        ;   ,,
             jsr HexOut          ;   ,,
             jsr PrintBuff       ;   ,,
             jsr ShowUsage+1     ; Show the usage template
-            lda #<MenuText      ; The string wasn't found, so show menu
-            ldy #>MenuText      ; ,,
-            jmp PrintStr        ; ,,
+            lda #LF             ; Show the menu
+            jsr CHROUT          ; ,,
+            ldx #0              ; Iterate through each plug-in
+-loop:      lda USER_VECT       ; ,, Compare the user vector to this plug-in's
+            cmp MenuLoc_L,x     ; ,, address, and show it in reverse text
+            bne show_item       ; ,, if it's currently selected
+            lda USER_VECT+1     ; ,,
+            cmp MenuLoc_H,x     ; ,,
+            bne show_item       ; ,,
+            lda #RVS_ON         ; ,,
+            jsr CHROUT          ; ,,
+show_item:  lda MenuText_L,x    ; ,,
+            ldy MenuText_H,x    ; ,,
+            jsr PrintStr        ; ,,
+            lda #RVS_OFF        ; ,, Turn off reverse
+            jsr CHROUT          ; ,,
+            inx                 ; ,,
+            cpx #PLUGINS        ; ,,
+            bne loop            ; ,,
+            rts
 cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
-            sta $05             ;   looked up address
+            sta USER_VECT       ;   looked up address
             lda MenuLoc_H,y     ;   ,,
-            sta $06             ;   ,,
+            sta USER_VECT+1     ;   ,,
 -loop:      ldx #0              ; Get character at screen position
             lda ($d1,x)         ; ,,
             cmp #WEDGE          ; Is it a . character?
@@ -2444,13 +2462,13 @@ HexGet   :  jsr CharGet
 hexget_r:   rts
             
 ; Increment Working Address
-; Get the EA byte and advance EA by one
+; Get the working byte and advance working address by one
 IncAddr:    ldx #$00
             lda (W_ADDR,x)
             inc W_ADDR
-            bne next_r
+            bne addr_r
             inc W_ADDR+1
-next_r:     rts
+addr_r:     rts
 
 ; Incremenet Command Pointer
 IncCP:      inc C_PT 
@@ -2866,24 +2884,24 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >Help-1,>PlugMenu-1,>Symbols-1,>DEF-1
 
 ; Plug-In Menu Data           
-MenuText:   .asc LF,"PLUG-IN MENU",LF,LF
-            .asc ".P ",QUOTE,"MEM CONFIG",QUOTE,LF
-            .asc ".P ",QUOTE,"RELOCATE",QUOTE,LF
-            .asc ".P ",QUOTE,"DEBUG",QUOTE,LF
-            .asc ".P ",QUOTE,"ML TO BASIC",QUOTE,LF
-            .asc ".P ",QUOTE,"CHAR HELPER",QUOTE,LF
-            .asc ".P ",QUOTE,"MUSIC",QUOTE,LF
-            .asc ".P ",QUOTE,"WAXFER",QUOTE,LF
-            .asc $00
+MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CHtxt,<BAtxt,<WAtxt
+MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CHtxt,>BAtxt,>WAtxt
+MEtxt:      .asc ".P ",QUOTE,"MEM CONFIG",QUOTE,LF,$00
+REtxt:      .asc ".P ",QUOTE,"RELOCATE",QUOTE,LF,$00
+DEtxt:      .asc ".P ",QUOTE,"DEBUG",QUOTE,LF,$00
+MLtxt:      .asc ".P ",QUOTE,"ML TO BASIC",QUOTE,LF,$00
+CHtxt:      .asc ".P ",QUOTE,"CHAR HELPER",QUOTE,LF,$00
+BAtxt:      .asc ".P ",QUOTE,"BASIC AID",QUOTE,LF,$00
+WAtxt:      .asc ".P ",QUOTE,"WAXFER",QUOTE,LF,$00
 NormalTxt:  .asc "NORMAL $",$00
 ListTxt:    .asc "LIST $",$00
             
-MenuChar1:  .asc "W","R","D","M","C","M","M"
-MenuChar2:  .asc "A","E","E","L","H","U","E"
-MenuLoc_L:  .byte <uwAxfer,<uRelocate,<uDebug,<uML2BAS
-            .byte <uChar,<uwAxScore,<uConfig
-MenuLoc_H:  .byte >uwAxfer,>uRelocate,>uDebug,>uML2BAS
-            .byte >uChar,>uwAxScore,>uConfig
+MenuChar1:  .asc "M","R","D","M","C","B","W"
+MenuChar2:  .asc "E","E","E","L","H","A","A"
+MenuLoc_L:  .byte <uConfig,<uRelocate,<uDebug,<uML2BAS
+            .byte <uChar,<uBASIC,<uwAxfer
+MenuLoc_H:  .byte >uConfig,>uRelocate,>uDebug,>uML2BAS
+            .byte >uChar,>uBASIC,>uwAxfer
 
 ; Addresses for error message text
 ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
@@ -2915,7 +2933,7 @@ HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
             .asc "F FILES    ",$5e," STAGE",LF
             .asc "$ HEX2DEC  # DEC2HEX",LF
             .asc "P INSTALL  U PLUG-IN",LF
-            .asc "X EXIT",LF,$00
+            .asc "X EXIT     ? HELP",LF,$00
 
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
@@ -3777,17 +3795,14 @@ AddByte:    pha
             bcc ok              ; ,,
             lda C_PT            ; ,,
             cmp $33             ; ,,
-            bcs OutOfMem        ; If at limit of memory, then ERROR
-ok:         pla
+            beq OutOfMem        ; If at limit of memory, then ERROR
+ok:         pla                 ; Who cares about PLA in case of error
             rts        
 
 ; Perform NEW, then show Out of Memory Error
 OutOfMem:   jsr ResetOut        ; Show the current address, so the user
-            lda #"$"            ;   knows where we ran out of BASIC
-            jsr CharOut         ;   memory
-            jsr ShowAddr        ;   ,,
-            lda #$0d            ;   ,,
-            jsr CharOut         ;   ,,
+            jsr AddrPrefix      ;   knows where we ran out of BASIC
+            jsr ShowAddr        ;   memory
             jsr PrintBuff       ;   ,,
             lda FAIL_POINT+1    ; Is there an existing program?
             bne mrestore        ; If so, restore it instead of NEW
@@ -3942,300 +3957,137 @@ cnextline:  ldx #$08
             dey
             bne cnextline
             rts
-            
-            
+        
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; WAXSCORE
-; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-wAxScore
+; BASIC AID
+; https://github.com/Chysn/VIC20-wAx2/wiki/BASIC-Aid
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; System Resources
-VOICE       = $900b
-VOLUME      = $900e             ; Sound volume register/aux color
+LINE_INC    = $0247             ; Line increment
+CURR_NUM    = $0248             ; Current line number (2 bytes)
+;FAIL_POINT = $024a             ; Fail point from ML2BASIC (2 bytes)
+CONSEC_0S   = $024c             ; Consecutive zeroes
 
-; User Tool Storage
-DURATION    = $0247             ; Current duration
-OCTAVE      = $0248             ; Current octave (0,1)
-LEGATO      = $0249             ; Legato On (if bit 7)
-RECORD      = $024a             ; Record mode on
+uBASIC:     jmp ph_basic
+            .asc $00,".U R [L# [INC]]",$0d,".U L STAGE [STAGE...]",$00
+ph_basic:   jsr ResetIn
+            jsr CharGet
+            cmp #"L"
+            beq Link
+            cmp #"R"
+            bne basic_err
+            jmp Renum
+basic_err:  jmp SYNTAX_ERR
 
-; Constants
-WHOLE       = $80               ; Whole note
-HALF        = $40               ; Half note
-QUARTER     = $20               ; Quarter note
-EIGHTH      = $10               ; Eighth note
+; BASIC Link
+; Copy the specified BASIC stage to the current stage
+Link:       jsr HexGet          ; Get a hex byte, with syntax error if not
+            bcc basic_err       ;   valid
+            pha                 ; Store link source for later
+            jsr BASIC2Addr      ; Set working address to BASIC stage
+-loop:      jsr EndOfBASIC      ; Have we found the end of the program?
+            beq found_eob       ; ,,
+            jsr BASFollow       ; If not, follow to the next pointer
+            jmp loop            ;   and see if that's the end
+found_eob:  jsr Addr2CP         ; Destination address is now in CP
+            lda C_PT            ; Set fail point, which preserves the existing
+            sta FAIL_POINT      ;   BASIC program if the Link process results
+            lda C_PT+1          ;   in an out of memory condition.
+            sta FAIL_POINT+1    ;   ,,
+next_prg:   pla                 ; Get back the link source and put it into
+            sta W_ADDR+1        ;   the working address
+            lda #$01            ;   ,,
+            sta W_ADDR          ;   ,,
+            ldy #0              ; Start copying code
+            sty CONSEC_0S       ; Reset consecutive 0 counter
+-loop:      lda (W_ADDR),y      ; Get source byte
+            bne reset_0         ;   If it's a zero, then count it
+            inc CONSEC_0S       ;   ,,
+            bne copy_bas        ;   and add it to the copy
+reset_0:    sty CONSEC_0S       ; When non-0, reset the consecutive 0 counter
+copy_bas:   jsr AddByte         ; AddByte from ML2BASIC, checks out-of-memory
+            jsr IncAddr         ; Increment the source
+            lda #3              ; Have there been three consecutive zeroes
+            cmp CONSEC_0S       ;   to end the source program?
+            bne loop            ; If not, keep copying
+            jsr HexGet          ; Is there another BASIC stage to link?
+            bcc link_done       ; If so, do it
+            pha                 ; Save the next stage page
+            sec                 ; If there's another stage to link, subtract
+            lda C_PT            ;   2 from the destination address, to
+            sbc #$02            ;   compensate for the two program-ending
+            sta C_PT            ;   zeroes
+            bcs next_prg        ;   ,,
+            dec C_PT+1          ;   ,,
+            jmp next_prg        ;   ,,
+link_done:  jsr Rechain         ; Fix all the broken links
+            jmp (READY)         ; Return to BASIC READY prompt
 
-uwAxScore:  jmp ph_waxsc
-            .asc $00,".U ADDR [R]",$00
-ph_waxsc    bcs maddr_ok        ; Bail if no valid address was provided
-            rts                 ; ,,
-maddr_ok:   lda #$08            ; Set volume
-            sta VOLUME          ; ,,
-            lda #$00            ; Initialize
-            sta LEGATO          ;   Legato
-            sta OCTAVE          ;   Octave Number
-            jsr CharGet         ; Check for Record mode
-            cmp #"R"            ; ,,
-            beq Record          ; ,,
-            jmp Player          ; Otherwise, play at address
+; BASIC Renumber
+; Renumber from specified line, with a specified increment
+Renum:      lda #100            ; Set defaults for current line number
+            sta CURR_NUM        ;   ,,
+            lda #0              ;   ,,
+            sta CURR_NUM+1      ;   ,,
+            lda #10             ;   and line increment
+            sta LINE_INC        ;   ,,
+            jsr HexGet          ; If a line number is not provided, just start
+            bcc start_ren       ;   ,,
+            sta CURR_NUM        ; Set the starting line number (low byte)
+            jsr HexGet          ; Now get the increment
+            bcc start_ren       ; 
+            sta LINE_INC        ; Store line increment
+start_ren:  jsr BASIC2Addr      ; Set working address to BASIC stage
+-loop:      jsr EndOfBASIC      ; Is this the end of the BASIC program?
+            bne set_num         ; ,,
+            jmp (READY)         ; If so, BASIC READY prompt
+set_num:    ldy #2              ; Store the current line number after the line
+            lda CURR_NUM        ;   pointer
+            sta (W_ADDR),y      ;   ,,
+            lda CURR_NUM+1      ;   ,,
+            iny                 ;   ,,
+            sta (W_ADDR),y      ;   ,,
+            lda LINE_INC        ; Increment the next line number by the
+            clc                 ;   line increment amount
+            adc CURR_NUM        ;   ,,
+            sta CURR_NUM        ;   ,,
+            bcc adv_ptr         ;   ,,
+            inc CURR_NUM+1      ;   ,,
+adv_ptr:    jsr BASFollow       ; Follow working address to next pointer
+            jmp loop            ; Check for completion and continue
 
-; Record Score
-; See above for key bindings
-Record:     lda #QUARTER        ; Starting duration
-            sta DURATION        ; ,,
-            lda #$80            ; Set recording flag
-            sta RECORD          ; ,,
--loop:      jsr GetKey          ; Get keypress
-proc_key:   jsr IsNote          ; Is it a note or rest?
-            bcs add_note
-            cmp #7              ; DEL - Undo
-            bne ch_cmd          ; ,,
-            jmp Undo            ; ,,
-ch_cmd:     cmp #5              ; Minus - Octave Down
-            beq octave_d        ; ,,
-            cmp #61             ; Plus - Octave Up
-            beq octave_u        ; ,,
-            cmp #45             ; Colon - Legato On
-            beq legato_on       ; ,,
-            cmp #22             ; Semicolon - Legato Off
-            beq legato_off      ; ,,
-            cmp #15             ; RETURN - Effect Placeholder
-            beq effect          ; ,,
-            cmp #39             ; f1 - Eighth note
-            beq set8            ; ,,
-            cmp #47             ; f3 - Quarter note
-            beq set4            ; ,,
-            cmp #55             ; f5 - Half note
-            beq set2            ; ,,
-            cmp #63             ; f7 - Whole note
-            beq set1            ; ,,
-            cmp #37             ; Period - Dot the note
-            beq dot             ; ,,
-            cmp #24             ; STOP
-            bne loop
-            lda #$00            ; Clear the keyboard buffer so it doesn't
-            sta $c6             ;   flush to the screen on exit
-            ldx #$00            ; Add $00 to indicate end-of-score
-            sta (W_ADDR,x)      ; ,,
-            jsr ShowData        ; ,,
-            jsr IncAddr         ; Increment working address
-            jmp Addr2CP         ; Update the Command Pointer and exit
-; Add an effect placeholder or effect command        
-effect:     lda #$0f            ; Enter an effect placeholder into memory
-            .byte $3c           ; TOP (skip word)
-octave_u:   lda #$1f            ; Octave up
-            .byte $3c
-octave_d:   lda #$2f            ; octave down
-            .byte $3c
-legato_on:  lda #$3f            ; Legato on
-            .byte $3c
-legato_off: lda #$4f            ; Legato off
-            jmp add_note+3
+; BASIC stage to working address
+BASIC2Addr: lda $2b             ; Get the BASIC starting address into the
+            sta W_ADDR          ;   working address
+            lda $2c             ;   ,,
+            sta W_ADDR+1        ;   ,,
+            rts
+
+; End of BASIC
+; Based on pointer in working address
+;     jsr EndOfBASIC
+;     bne no
+;     beq yes
+EndOfBASIC: ldy #0              ; Look at pointer to the next line. If both
+            tya                 ;   bytes are zero, the renumber is done
+            cmp (W_ADDR),y      ;   ,,
+            bne eob_r           ;   ,,
+            iny                 ;   ,,
+            cmp (W_ADDR),y      ;   ,,
+            bne eob_r           ;   ,,
+eob_r:      rts  
+
+; BASIC Line Follow
+; Use working address pointer to update to the next line
+BASFollow:  ldy #0              ; Advance the working address to the pointer
+            lda (W_ADDR),y      ;   specified at the current working address
+            pha                 ;   ,,
+            iny                 ;   ,,
+            lda (W_ADDR),y      ;   ,,
+            sta W_ADDR+1        ;   ,,
+            pla                 ;   ,,
+            sta W_ADDR          ;   ,,
+            rts
             
-; Set a note duration            
-set8:       lda #EIGHTH
-            .byte $3c           ; TOP (skip word)
-set4:       lda #QUARTER
-            .byte $3c           ; TOP (skip word)
-set2:       lda #HALF
-            .byte $3c           ; TOP (skip word)
-set1:       lda #WHOLE
-            sta DURATION
-            bne loop
-; Dot the current duration
-dot:        lda DURATION        ; Take the current duration
-            lsr                 ;   and shift it right
-            ora DURATION        ; Then add the duration back to dot note
-            and #$f0            ; Keep the duration in the high nybble
-            sta DURATION
-            jmp loop
-; Add a note            
-add_note:   ora DURATION
-            ldx #$00
-            sta (W_ADDR,x)
-            jsr ShowData        ; Show note data
-            jsr PlayNote        ; Play the note at the selected duration
-            lda #$00            ; Turn off the voice
-            sta VOICE           ; ,,
-            jsr IncAddr         ; Increment the address
-            jsr Addr2CP         ; Update the Command Pointer and go back
-            jmp loop
-
-; Simple wAxScore player
-Player:     lsr RECORD          ; Turn off recording flag
-            jsr ShowData        ; Show the note about to be played
-            jsr PlayNote        ; Play it
-            php
-            jsr IncAddr         ; Increment the address
-            jsr Addr2CP         ;   ,,
-            plp
-            bcc player_r        ; If end-of-score marker, then end
-            lda $c5             ; Check STOP key
-            cmp #24             ; ,,
-            beq player_r        ; ,,
-            jmp Player          ; Play next note
-player_r:   lda #$00            ; Turn off the playing voice
-            sta VOICE           ; ,,
-            rts 
-    
-; Undo        
-; Go back to previous note to correct it                        
-Undo:       lda W_ADDR
-            sec
-            sbc #$01
-            sta W_ADDR
-            bcs show_prev
-            dec W_ADDR+1
-show_prev:  jsr ResetOut        ; Show the previous address to verify undo
-            lda #"U"            ;   action
-            jsr CharOut         ;   ,,
-            jsr ShowAddr        ;   ,,
-            jsr PrintBuff       ;   ,,
-            jsr Addr2CP
-            jmp loop                       
- 
-; Get Key
-; With debounce, and return as A
-GetKey:     lda $c5             ; Make sure any previous keys are released first
-            cmp #$40            ; ,,
-            bne GetKey          ; ,,
--loop:      lda $c5             ; Now wait for an actual keypress start
-            cmp #$40            ; ,,
-            beq loop            ; ,,
-            rts
-
-; Is Note or Rest
-; Set Carry and return degree in A if it's a note or rest
-; Clear Carry and return original key code in A if it's something else
-IsNote:     pha                 ; Save the original keypress
-            ldx #$0d            ; Loop through 13 notes and 1 rest key to see
--loop:      cmp Degree,x        ;   if it matches one of the chromatic degrees
-            beq found_deg       ;   ,,
-            dex                 ;   ,,
-            bpl loop            ;   ,,
-            pla                 ; Loop ends without finding a note or rest key,
-            clc                 ;   so pull the original key and send back to
-            rts                 ;   look for other key presses
-found_deg:  pla                 ; Found degree; pull original key and discard
-            txa                 ; A is now the chromatic degree
-            sec                 ; Set Carry to indicate note or rest was found
-            rts
-
-; Delay A Jiffies
-Delay:      ldy $c5
-            clc
-            adc TIMER
--loop:      cpy $c5             ; Has the key pressed changed?
-            beq ch_time         ; If not, keep the delay going
-            ldy $c5             ; Has the key been lifted (#$40)?
-            cpy #$40            ; ,,
-            beq ch_time         ; If so, keep the delay going
-            bit RECORD          ; If a new key is pressed, are we in record
-            bpl ch_time         ; If not, keep the delay going
-            pla                 ; Bypassing the rest of the delay process, so
-            pla                 ;   remove return address for Delay from stack
-            pla                 ; And also the return address for PlayNote
-            pla                 ; ,,
-            tya                 ; Put the key on the stack
-            pha                 ; ,,
-            lda #$00            ; Turn off the voice
-            sta VOICE           ; ,,
-            jsr IncAddr         ; Increment the address
-            jsr Addr2CP         ; Update the Command Pointer
-            pla                 ; Get back the last key pressed, and process
-            jmp proc_key        ;   new key as a command
-ch_time:    cmp TIMER
-            bne loop
-            rts
-
-; Play Note
-; At the working address
-; Set Carry if the note was played successfully
-; Clear Carry if this is the end of the score
-PlayNote:   ldx #$00
-            lda (W_ADDR,x)
-            beq end_score
-            pha
-            and #$0f            ; Mask away the duration
-            tax                 ; X is the chromatic degree
-            lda OCTAVE          ; Choose the note table based on the
-            bne oct1            ;   selected octave
-            lda Oct0,x          ;   ,,
-            jmp play            ;   ,,
-oct1:       lda Oct1,x          ;   ,,
-play:       tay
-            pla
-            cpx #$0f            ; This is an effect, so process it
-            beq wsEffect        ; ,,
-            and #$f0            ; Mask away the degree, leaving A as the
-                                ;   duration. Now, with a quarter note having a
-                                ;   value of 32, simply treating that as a
-                                ;   jiffy counter would give us a tempo of
-                                ;   112 beats per minute, which is probably
-                                ;   okay in this system. The IRQ player will
-                                ;   give the developer more control over
-                                ;   tempo in a production environment.
-            ldx TIMER           ; Sync to the start of the next jiffy, within a
--loop:      cpx TIMER           ;   few cycles
-            beq loop            ;   ,,
-            sty VOICE           ; Play the voice
-            jsr Delay           ; Delay A jiffies, see above for why
-            bit LEGATO          ; If Legato is on, do not turn off the voice
-            bmi play_r          ; ,,
-            lda #$00            ; Stop the voice
-            sta VOICE           ; ,,
-play_r:     sec
-            rts
-end_score:  lda #$00            ; Turn off the voice
-            sta VOICE           ; ,,
-            clc                 ; Nothing left to play; clear Carry and return
-            rts                 ; ,,
-            
-; Process Effect
-; in high nybble of A
-wsEffect:   and #$f0
-            cmp #$00            ; No effect
-            bne ch_oct_up
-            jmp play_r
-ch_oct_up:  cmp #$10            ; Octave Up
-            bne ch_oct_dn
-            inc OCTAVE
-            jmp play_r
-ch_oct_dn:  cmp #$20            ; Octave Down
-            bne ch_leg_on
-            dec OCTAVE
-            jmp play_r
-ch_leg_on:  cmp #$30            ; Legato On
-            bne ch_leg_off
-            lda #$80
-            sta LEGATO
-            jmp play_r
-ch_leg_off: cmp #$40            ; Legato Off
-            bne play_r
-            lsr LEGATO
-            jmp play_r        
-
-; Show Note Data
-; At the working address
-ShowData:   jsr ResetOut        ; Show the data as it's entered
-            lda #"@"            ;   as a wAx data entry command
-            jsr CharOut         ;   ,,
-            jsr ShowAddr        ;   ,,
-            lda #":"            ;   ,,
-            jsr CharOut         ;   ,,
-            ldx #$00            ;   ,,
-            lda (W_ADDR,x)      ;   ,,
-            jsr HexOut          ;   ,,
-            jmp PrintBuff       ;   ,,
-    
-; Key to Degree         2    3       5    6     7
-;                SPC Q     W   E  R    T     Y    U  I
-Degree:     .byte 32,48,56,9,1,49,10,2,50,58,11,3,51,12
-
-; Degree to Note Value Tables
-; Determined by electronic tuner
-Oct0:       .byte 0,133,139,146,152,158,164,169,173,178,182,187,190,194
-Oct1:       .byte 0,194,197,201,204,207,209,212,214,217,219,221,223,225
-      
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; MEMORY CONFIG
 ; https://github.com/Chysn/VIC20-wAx2/wiki/About-wAxpander

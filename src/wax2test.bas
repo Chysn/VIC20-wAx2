@@ -321,16 +321,16 @@
 820 .a *    cmp #%00001111-f
 825 .a *    lda #"z"+1
 830 p = 65490 : ch = asc("@")
-835 .a *    jsr 'p
-840 ., *    cpy 'ch
+835 .a *    jsr 'p'
+840 ., *    cpy 'ch'
 845 .a *    brk
 850 .= 6800 a251a1fca05fc900
 855 .= *    a95b20d2ffc44000
 860 v = 100 : vr = 40
-865 ., 6800 lda ('v,x)
-870 ., *    lda ('v),y
-875 ., *    lda ('vr,x)
-880 ., *    lda ('vr),y
+865 ., 6800 lda ('v',x)
+870 ., *    lda ('v'),y
+875 ., *    lda ('vr',x)
+880 ., *    lda ('vr'),y
 890 .= 6800 a164b164a128b128
 999 print "{up}           {blue}[far out]{black}"
 1000 print:print "{green}all tests pass!{blue}"
