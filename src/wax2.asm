@@ -2583,9 +2583,13 @@ add_hexsig: lda IDX_IN          ; If the target address is being inter-
             lda #"$"            ;   ,,
             jsr AddInput        ;   ,,
 get_var:    jsr CHRGET          ; Get single-letter variable name
-            sta $45             ; Set variable name
-            lda #0              ; ,,
-            sta $46             ; ,,
+            sta $45             ;   Set variable name
+            jsr CHRGET          ; Get second letter of variable name
+            cmp #","+1          ; Comma, close paren, or 0, mean it's a one-
+            bcs two_ltr         ;   letter variable name.
+            dec $7a             ; -1 the search address for correct transcribe
+            lda #0              ; Force second variable name byte to 0
+two_ltr:    sta $46             ;   Set variable name
             jsr FNDVAR          ; Find variable
             lda $47             ; Move found variable to FAC
             ldy $48             ; ,,
