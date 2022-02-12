@@ -2315,23 +2315,19 @@ show_type:  jsr PrintStr        ;   ,,
             jsr HexOut          ;   ,,
             jsr PrintBuff       ;   ,,
             jsr ShowUsage+1     ; Show the usage template
-            lda #LF             ; Show the menu
-            jsr CHROUT          ; ,,
             ldx #0              ; Iterate through each plug-in
--loop:      lda USER_VECT       ; ,, Compare the user vector to this plug-in's
-            cmp MenuLoc_L,x     ; ,, address, and show it in reverse text
-            bne show_item       ; ,, if it's currently selected
-            lda USER_VECT+1     ; ,,
-            cmp MenuLoc_H,x     ; ,,
-            bne show_item       ; ,,
-            lda #RVS_ON         ; ,,
-            jsr CHROUT          ; ,,
-show_item:  lda MenuText_L,x    ; ,,
+-loop:      lda MenuText_L,x    ; ,,
             ldy MenuText_H,x    ; ,,
             jsr PrintStr        ; ,,
-            lda #RVS_OFF        ; ,, Turn off reverse
-            jsr CHROUT          ; ,,
-            inx                 ; ,,
+            lda USER_VECT       ; ,, Compare the user vector to this plug-in's
+            cmp MenuLoc_L,x     ; ,, address, and show an asterisk after the 
+            bne m_next_it       ; ,, name if it's currently selected
+            lda USER_VECT+1     ; ,, ,,
+            cmp MenuLoc_H,x     ; ,, ,,
+            bne m_next_it       ; ,, ,,
+            lda #"*"            ; ,, ,,
+            jsr CHROUT          ; ,, ,,
+m_next_it:  inx                 ; ,,
             cpx #PLUGINS        ; ,,
             bne loop            ; ,,
             rts
@@ -2886,15 +2882,15 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
 ; Plug-In Menu Data           
 MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CHtxt,<BAtxt,<WAtxt
 MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CHtxt,>BAtxt,>WAtxt
-MEtxt:      .asc ".P ",QUOTE,"MEM CONFIG",QUOTE,LF,$00
-REtxt:      .asc ".P ",QUOTE,"RELOCATE",QUOTE,LF,$00
-DEtxt:      .asc ".P ",QUOTE,"DEBUG",QUOTE,LF,$00
-MLtxt:      .asc ".P ",QUOTE,"ML TO BASIC",QUOTE,LF,$00
-CHtxt:      .asc ".P ",QUOTE,"CHAR HELPER",QUOTE,LF,$00
-BAtxt:      .asc ".P ",QUOTE,"BASIC AID",QUOTE,LF,$00
-WAtxt:      .asc ".P ",QUOTE,"WAXFER",QUOTE,LF,$00
-NormalTxt:  .asc "NORMAL $",$00
-ListTxt:    .asc "LIST $",$00
+MEtxt:      .asc LF,".P ",QUOTE,"MEM CONFIG",QUOTE,$00
+REtxt:      .asc LF,".P ",QUOTE,"RELOCATE",QUOTE,$00
+DEtxt:      .asc LF,".P ",QUOTE,"DEBUG",QUOTE,$00
+MLtxt:      .asc LF,".P ",QUOTE,"ML TO BASIC",QUOTE,$00
+CHtxt:      .asc LF,".P ",QUOTE,"CHAR HELPER",QUOTE,$00
+BAtxt:      .asc LF,".P ",QUOTE,"BASIC AID",QUOTE,$00
+WAtxt:      .asc LF,".P ",QUOTE,"WAXFER",QUOTE,LF,$00
+NormalTxt:  .asc " NORMAL $",$00
+ListTxt:    .asc " LIST $",$00
             
 MenuChar1:  .asc "M","R","D","M","C","B","W"
 MenuChar2:  .asc "E","E","E","L","H","A","A"
