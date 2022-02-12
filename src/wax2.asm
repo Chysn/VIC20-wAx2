@@ -3319,6 +3319,7 @@ RUNNING     = $024a             ; Running
 BASIC       = $024b             ; BASIC program
 
 uwAxfer:    jmp ph_waxfer
+            ; Command template
             .asc $00,".U [B/T/ADDR]",$00
 ph_waxfer:  php
             lsr TERMMODE        ; Default to not Terminal Mode
@@ -3449,6 +3450,7 @@ OFFSET      = $024b             ; Offset (C_PT - W_ADDR, 2 bytes)
 
             ; Parameter collection
 uRelocate:  jmp ph_reloc
+            ; Command template
             .asc $00,".U FROM TO TARGET",$00
 ph_reloc:   bcs okay            ; Error if invalid first argument (source start)
 error:      jmp $cf08           ; ?SYNTAX ERROR, warm start
@@ -3552,6 +3554,7 @@ KNAPSIZE    = BREAKPT+2         ; Knapsack size (1 byte)
 ; * If setting a breakpoint, its address is in W_ADDR vector
 ; * If clearing a breakpoint, the Carry flag is clear
 uDebug:     jmp ph_debug
+            ; Command template
             .asc $00,".U ADDR",$00 
 ph_debug:   bcs NewKnap         ; A legal address has been provided in $a6/$a7
 restore:    lda BREAKPT         ; Otherwise, restore the breakpoint to the
@@ -3652,6 +3655,7 @@ MODIFIER    = $0249             ; Relocate or absolute
 FAIL_POINT  = $024a             ; BASIC program end restore point (2 bytes)
 
 uML2BAS:    jmp ph_ml2bas
+            ; Command template
             .asc $00,".U FROM TO+1 [R/H/T]",$00
 ph_ml2bas:  bcc merror          ; Error if the first address is no good
             jsr HexGet          ; Get high byte of range end
@@ -3722,13 +3726,13 @@ show_tool:  jsr AddByte         ; Add the selected tool to the buffer
             beq show_addr       ;   ,,
             lda #$ac            ;   ,,
             jsr AddByte         ;   ,,
-            jmp code_part       ;   ,,
+            jmp code_part2      ;   ,,
 show_addr:  jsr ResetOut        ; Add the current address to the BASIC line
             jsr ShowAddr        ; ,,
             jsr AddBuffer       ; ,,
 code_part:  lda #" "            ; Space after address or *
             jsr AddByte         ; ,,
-            jsr ResetOut        ; Reset output for the code portion
+code_part2: jsr ResetOut        ; Reset output for the code portion
             lda MODIFIER        ; If the disassembly is in relocate mode,
             beq gen_code        ;   
             cmp #"H"            ;   check for hex dump modifier and
@@ -3908,58 +3912,59 @@ min_range:  clc
 CURBYTE     = $0247             ; Current byte value
 
 uChar:      jmp ph_char
+            ; Command template
             .asc $00,".U [ADDR]",$00
-ph_char:    bcc Canvas
-            lda #$00
-            sta $07
-            lda $0288
-            sta $08
-scanline:   lda #$00
-            sta CURBYTE
-            ldx #$80            ; Set bit 7
+ph_char:    bcc Canvas          ; If no address was provided, draw the canvas
+            lda #$00            ; Get the top of the screen for examination
+            sta C_PT            ; ,, Command Pointer will be the screen position
+            lda $0288           ; ,,
+            sta C_PT+1          ; ,,
+scanline:   lda #$00            ; Initialize the byte to 0
+            sta CURBYTE         ; ,,
+            ldx #$80            ; Set bit 7 in X (current bit value)
             ldy #$00
-check:      lda ($07),y
-            cmp #":"
-            beq cgnext
-            txa
-            ora CURBYTE
-            sta CURBYTE
-cgnext:     iny
-            txa
-            lsr
-            tax
-            bne check
-output:     ldy #$00
-            lda CURBYTE
-            sta (W_ADDR),y
-            jsr IncAddr
-            lda $07
-            cmp #$9a
-            beq char_r
-            lda #$16
-            clc
-            adc $07
-            sta $07
-            bcc scanline
-char_r:     rts
+check:      lda (C_PT),y        ; Get the character on-screen
+            cmp #":"            ; Has the character been changed from colon?
+            beq cgnext          ; If not, just move to the next byte
+            txa                 ; Current bit value to A while mathing
+            ora CURBYTE         ; Add it to the byte as a 1
+            sta CURBYTE         ; ,,
+cgnext:     iny                 ; Move to the next screen character
+            txa                 ; Move X to the next bit value
+            lsr                 ; ,,
+            tax                 ; ,,
+            bne check           ; If X still has value, get next character
+output:     ldy #$00            ; Now, current byte is computed, so store it
+            lda CURBYTE         ;   at the working address
+            sta (W_ADDR),y      ;   ,,
+            jsr IncAddr         ; Move to the next working address
+            lda C_PT            ; Is everything done?
+            cmp #$9a            ; ,,
+            beq char_r          ; ,,
+            lda #$16            ; If not, drop down to the next screen line
+            clc                 ; ,,
+            adc C_PT            ; ,,
+            sta C_PT            ; ,,
+            bcc scanline        ; There aren't enough lines for carry to get set
+char_r:     jmp Addr2CP         ; Set CP and return
 
 ; Draw Canvas
 Canvas:     jsr $e55f           ; Clear screen
-            ldy #$08
-cnextline:  ldx #$08
-            lda #":"
--loop:      jsr $ffd2
-            dex
-            bne loop
-            lda #$0d
-            jsr $ffd2
-            dey
-            bne cnextline
+            ldy #$08            ; Draw an 8x8 grid in the upper-left corner
+cnextline:  ldx #$08            ;   of the screen, composed of colons
+            lda #":"            ;   ,,
+-loop:      jsr $ffd2           ;   ,,
+            dex                 ;   ,,
+            bne loop            ;   ,,
+            lda #$0d            ; Drop to the next line
+            jsr $ffd2           ; ,,
+            dey                 ; Iterate over rows
+            bne cnextline       ; ,,
             rts
         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; BASIC AID
-; https://github.com/Chysn/VIC20-wAx2/wiki/BASIC-Aid
+; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-BASIC-Aid
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 LINE_INC    = $0247             ; Line increment
 CURR_NUM    = $0248             ; Current line number (2 bytes)
@@ -3967,15 +3972,17 @@ CURR_NUM    = $0248             ; Current line number (2 bytes)
 CONSEC_0S   = $024c             ; Consecutive zeroes
 
 uBASIC:     jmp ph_basic
-            .asc $00,".U R [L# [INC]]",$0d,".U L STAGE [STAGE...]",$00
-ph_basic:   jsr ResetIn
-            jsr CharGet
-            cmp #"L"
-            beq Link
-            cmp #"R"
-            bne basic_err
-            jmp Renum
-basic_err:  jmp SYNTAX_ERR
+            ; Command templates
+            .asc $00,".U R [L# [INC]]",$0d
+            .asc ".U L STAGE [STAGE...]",$00
+ph_basic:   jsr ResetIn         ; Route to utility
+            jsr CharGet         ; ,,
+            cmp #"L"            ; ,,
+            beq Link            ; ,,
+            cmp #"R"            ; ,,
+            bne basic_err       ; ,,
+            jmp Renum           ; ,,
+basic_err:  jmp SYNTAX_ERR      ; ,,
 
 ; BASIC Link
 ; Copy the specified BASIC stage to the current stage
@@ -4092,28 +4099,29 @@ BASFollow:  ldy #0              ; Advance the working address to the pointer
 ; https://github.com/Chysn/VIC20-wAx2/wiki/About-wAxpander
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 uConfig:    jmp ph_conf
+            ; Command template
             .asc $00,".U 0/3/8/16/24",$00
-ph_conf:    jsr ResetIn
-            jsr CharGet
-            ldy #4
--loop:      cmp ExpKey,y
-            beq expfound
-            dey
-            bpl loop
-            rts
-expfound:   lda MemLo,y
-            sta $0282
-            lda MemHi,y
-            sta $0284
-            lda ScrHi,y
-            sta $0288
+ph_conf:    jsr ResetIn         ; Get the character after the command
+            jsr CharGet         ; ,,
+            ldy #4              ; Look through the table for the character
+-loop:      cmp ExpKey,y        ; ,,
+            beq expfound        ; ,,
+            dey                 ; ,,
+            bpl loop            ; ,,
+            jmp SYNTAX_ERR      ; No valid character was found
+expfound:   lda MemLo,y         ; A valid character was found, indicating a
+            sta $0282           ;   memory configuration. So look up the values
+            lda MemHi,y         ;   in the table, including mem low and high
+            sta $0284           ;   bytes, and screen location
+            lda ScrHi,y         ;   ,,
+            sta $0288           ;   ,,
 soft_reset: jsr $fd52           ; restore default I/O vectors
             jsr $fdf9           ; initialize I/O registers
             jsr $e518           ; initialise hardware
             cli                 ; enable interrupts            
             jsr $e45b           ; Initialise BASIC vector table
             jsr $e3a4           ; Initialise BASIC RAM locations
-            jsr $e404           ; Print start up message and initialise memory pointers
+            jsr $e404           ; Print start up message and init pointers
             ldx #$fb            ; Value for start stack
             txs                 ; Set stack pointer
             jsr Install         ; Re-install wAx
