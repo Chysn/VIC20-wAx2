@@ -1169,13 +1169,13 @@ RegDisp:    jsr ResetOut
 ; BREAKPOINT MANAGER
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Breakpoint-Manager
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-SetBreak:   bcs set_bp
-            lda INBUFFER
-            beq show_bp
-            cmp #"-"
-            bne vec_r
-            jsr ClearBP
-            jmp SetupVec
+SetBreak:   bcs set_bp          ; Set breakpoint if a valid address is provided
+            lda INBUFFER        ; If nothing is after the B, show the
+            beq show_bp         ;   breakpoint
+            cmp #"-"            ; If - is after the B, clear the breakpoint
+            bne vec_r           ; ,,
+            jsr ClearBP         ; ,,
+            jmp SetupVec        ; Turn on BRK trapping
 show_bp:    lda BREAKPOINT+2    ; Is a breakpoint set?
             beq vec_r           ; If not, just return
             lda BREAKPOINT      ; If so, populate working address with
@@ -1193,7 +1193,10 @@ set_bp:     jsr ClearBP         ; Clear the old breakpoint, if it exists
             sta BREAKPOINT+2    ;   to be restored on the next break
             tya                 ; Write BRK to the breakpoint location
             sta (W_ADDR),y      ;   ,,
-            lda #CRSRUP         ; Cursor up to overwrite the command
+            lda (W_ADDR),y      ; If the byte isn't set to 0, do not continue
+            beq bp_ok           ; ,,
+            sty BREAKPOINT+2    ; Clear breakpoint but continue
+bp_ok:      lda #CRSRUP         ; Cursor up to overwrite the command
             jsr CHROUT          ; ,,
 showcode:   jsr DirectMode      ; When run inside a BASIC program, skip the
             bne SetupVec        ;   BRK line display
@@ -1560,9 +1563,9 @@ b102h_r:    jmp PrintBuff
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Symbols
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 ; Set Command Pointer
-SetCP:      bcc cp2bas_r        ; Do nothing if no value provided
-            lda #0              ;   ,,
-            sta OVERFLOW_F      ;   ,,
+SetCP:      bcc CPtoBASIC       ; Set CP variable (in BASIC) if no address
+            lda #0              ; Clear the unresolved reference overflow when
+            sta OVERFLOW_F      ;   CP is set
             jsr DirectMode      ; If * addr was issued in BASIC, reset forward
             beq Addr2CP         ;   reference overflow counter, and set UR%
             jsr URtoBASIC       ;   ,,
