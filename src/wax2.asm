@@ -2842,8 +2842,8 @@ three:      rts
 
 ; Convert PETSCII to Screen Code
 ; In A
-PETtoScr:   cmp #$ff            ; Is pi
-            beq pi
+PETtoScr:   cmp #$ff            ; Is pi, which is an odd duck
+            beq pi              ; ,,
             cmp #$c0
             bcs b_c0
             cmp #$a0
