@@ -1925,29 +1925,19 @@ ch_length:  lda W_ADDR+1        ; Make sure that the ending page isn't lower
             clc                 ;   ,,
             adc #$0e            ;   ,,
             sta W_ADDR          ;   ,,
-set_ptrs:   lda W_ADDR+1        ; Set up the BASIC start and end pointers
-            sta $2c             ;   and stuff
-            sta $2e             ;   ,,
-            sta $30             ;   ,,
-            sta $32             ;   ,,
-            lda #$01            ;   ,,
-            sta $2b             ;   ,,
-            lda #$03            ;   ,,
-            sta $2d             ;   ,,
-            sta $2f             ;   ,,
-            sta $31             ;   ,,
-            lda #$00            ;   ,,
-            sta $33             ;   ,,
-            sta $37             ;   ,,
-            lda W_ADDR          ;   ,,
-            sta $34             ;   ,,
-            sta $38             ;   ,,
-            ldy #$00            ; Clear the low byte. From here on out, we're     
-            sty W_ADDR          ;   dealing with the start of the BASIC stage
-            ldy #$00            ; Look through the input buffer for an "N"
--loop:      lda INBUFFER,y      ;   character. This indicates that it is a
-            beq finish          ;   new stage.
-            cmp #"N"            ;   ,,
+set_ptrs:   lda W_ADDR+1        ; Set up the BASIC start of memory pointer
+            sta $2c             ; ,, high
+            ldy #$01            ; ,,
+            sty $2b             ; ,, low=1
+            lda W_ADDR          ; Set up the BASIC end of memory pointer
+            sta $38             ; ,, high
+            dey                 ; ,,
+            sty $37             ; ,, low = 0
+            sty W_ADDR          ; W_ADDR is now start address of BASIC stage 
+            ;ldy #$00
+-loop:      lda INBUFFER,y      ; Look through the input buffer for an "N" 
+            beq finish          ;   character. This indicates that it is a
+            cmp #"N"            ;   new stage.
             beq new             ;   ,,
             iny
             cpy #$16            ; If we reach the end without seeing an "N",
@@ -3801,10 +3791,10 @@ AddByte:    pha
             sta (C_PT,x)
             jsr IncCP
             lda C_PT+1          ; Check memory for end of BASIC
-            cmp $34             ; ,,
+            cmp $37             ; ,,
             bcc ok              ; ,,
             lda C_PT            ; ,,
-            cmp $33             ; ,,
+            cmp $38             ; ,,
             beq OutOfMem        ; If at limit of memory, then ERROR
 ok:         pla                 ; Who cares about PLA in case of error
             rts        
