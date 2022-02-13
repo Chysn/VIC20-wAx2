@@ -1070,8 +1070,15 @@ is_zero:    lda #"0"
 ; ASSERTION TESTER/QUICK PEEK
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Assertion-Tester
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Tester:     bcc test_err        ; Error if no address
-            ldy #$00            ; Start with 0 index
+Tester:     bcs get_bytes       ; If there's an address supplied, get more bytes
+            jsr ResetIn         ; Otherwise, see if only a single byte was
+            jsr HexGet          ;   provided for Quick Peek address
+            bcs low_peek        ; If so, handle low-byte peek
+            jmp SYNTAX_ERR      ; Otherwise, syntax error
+low_peek:   sta W_ADDR          ; Treat the single address as the low byte,
+            lda #0              ;   setting the high byte to 0
+            sta W_ADDR+1        ;   ,,
+get_bytes:  ldy #$00            ; Start with 0 index
             jsr HexGet          ; Is there a byte after the address?
             bcs add_test        ; If so, insert it into the test, look for more
             jsr ResetOut        ; If there's only an address, show the value
