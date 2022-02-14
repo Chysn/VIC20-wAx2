@@ -112,6 +112,7 @@ STORFAC     = $dbd4             ; Store FAC1 to memory
 MAKFP       = $d391             ; 2-byte integer to FAC1
 SGNFAC      = $dc2b             ; Sign of FAC1 (A=$ff if negative)
 LAPLUS      = $d867             ; Add FAC2 to FAC1
+CHRTST      = $d113             ; Check character between A and Z
 
 ; System resources - Vectors and Pointers
 IGONE       = $0308             ; Vector to GONE
@@ -1933,7 +1934,6 @@ set_ptrs:   lda W_ADDR+1        ; Set up the BASIC start of memory pointer
             sta $38             ; ,, high
             dey                 ; ,,
             sty $37             ; ,, low = 0
-            sty W_ADDR          ; W_ADDR is now start address of BASIC stage 
             ;ldy #$00
 -loop:      lda INBUFFER,y      ; Look through the input buffer for an "N" 
             beq finish          ;   character. This indicates that it is a
@@ -1943,11 +1943,7 @@ set_ptrs:   lda W_ADDR+1        ; Set up the BASIC start of memory pointer
             cpy #$16            ; If we reach the end without seeing an "N",
             bne loop            ;   just rechain the area as if it were a BASIC
             beq finish          ;   program
-new:        lda #$00            ; Zero out the first few bytes of the stage so
-            ldy #$02            ;   that it looks like a NEW program. I'm not
--loop:      sta (W_ADDR),y      ;   using BASIC's NEW at $c642 because it does
-            dey                 ;   not store $00 at the page boundary, which
-            bpl loop            ;   causes problems.
+new:        jsr $c642           ; Perform BASIC NEW
 finish:     jsr Rechain
             jmp (READY)
 st_range:   jsr ResetOut        ; Show the start and end pages of the current
@@ -2584,31 +2580,53 @@ Param_16:   jsr HexPrefix
 
 ; Interpolate Variable
 ; Replace 'V with hex(V)            
-InterpVar:  lda TOOL_CHR        ; If the interpolation is in the Assemble
+InterpVar:  ldy #0
+            sty CHARAC          ; Set bit 7 if string
+-loop:      lda #0
+            sta $45,y
+            jsr CHRGET          ; Get next character
+            beq int_err         ; Error on nothing
+            cmp #"$"            ; String variable?
+            bne ch_eov          ; ,,
+            ror CHARAC          ; Set string variable flag
+            bcc next_vch        ; Keep looking for closing single quote
+ch_eov:     cmp #"'"            ; If the closing quote is found,
+            beq val_var         ;   then find the variable
+            sta $45,y           ; Store next variable name character
+next_vch:   iny
+            cpy #4
+            bne loop
+int_err:    jmp SYNTAX_ERR      ; Interpolation variable error                       
+val_var:    lda $45             ; Validate the found variable name;
+            jsr CHRTST          ;   if first character <A or >Z, then error
+            bcc int_err         ;   ,,
+            lda $46             ; Validate the second character. If it's 0,
+            beq find_var        ;   then it's a one-variable name, so OK
+            jsr CHRTST          ;   the name is OK
+            bcs find_var        ;   ,,
+            cmp #"9"+1          ; If the second character >9 then error
+            bcs int_err         ; ,,
+            cmp #"0"            ; If the second character <0 then error
+            bcc int_err         ; ,,
+find_var:   lda $46             ; The variable name is OK. Add bit 7 if a
+            ora CHARAC          ;   string
+            sta $46             ;   ,,
+            jsr FNDVAR          ; Find variable
+            bit $46             ; If the found variable is a string, then
+            bmi is_string       ;   handle it, otherwise it's numeric...
+            lda TOOL_CHR        ; If the interpolation is in the Assemble
             cmp #T_ASM          ;   tool, as an operand, add the $ in
             beq add_hexsig      ;   front of the hex digits.
             cmp #T_SRC          ; Same with code search
             beq add_hexsig      ; ,,
             cmp #T_ASM_AL       ; Same with assembly alias
-            bne get_var         ; ,,
+            bne mov2fac         ; ,,
 add_hexsig: lda IDX_IN          ; If the target address is being inter-
             cmp #4              ;   polated, then don't add the $
-            bcc get_var         ;   ,,
+            bcc mov2fac         ;   ,,
             lda #"$"            ;   ,,
-            jsr AddInput        ;   ,,          
-get_var:    ldy #0
--loop:      lda #0
-            sta $45,y
-            jsr CHRGET
-            cmp #"'"
-            beq find_var
-            sta $45,y
-            iny
-            cpy #3
-            bne loop
-            jmp SYNTAX_ERR                        
-find_var:   jsr FNDVAR          ; Find variable
-            lda $47             ; Move found variable to FAC
+            jsr AddInput        ;   ,,              
+mov2fac:    lda $47             ; Move found variable to FAC
             ldy $48             ; ,,
             jsr LODFAC          ; ,,
             jsr MAKADR          ; Convert floating point to address
@@ -2621,8 +2639,35 @@ find_var:   jsr FNDVAR          ; Find variable
 int_low:    lda $14
             jsr HexOut
             jsr CopyOp
-            jmp Transcribe            
-
+            jmp Transcribe
+            
+is_string:  lda #QUOTE          ; This is a string variable, so add quote to
+            jsr AddInput        ;   the input buffer
+            ldx #0              ; Get the string size here
+            lda ($47,x)         ; ,,
+            cmp #17             ; If it's bigger than wAx can handle, shorten it
+            bcc str_sz_ok       ; ,,
+            lda #16             ; ,,
+str_sz_ok:  sta CHARAC          ; Store the string size for comparison
+            ldy #2              ; Get the second byte after the variable
+            lda ($47),y         ;   address, which is high byte of string
+            pha                 ; Push high byte to stack
+            dey                 ; Now get the low byte of the string address
+            lda ($47),y         ; ,,
+            sta $47             ; Store low byte, repurposing $47/$48 for a
+            pla                 ;   little while; then, pull and store
+            sta $48             ;   high byte.
+            dey                 ; Set string index to 0
+-loop:      lda ($47),y         ; Get the string byte at the (newly-designated)
+            beq str_done        ;   pointer. It's zero-terminated
+            jsr AddInput        ; AddInput doesn't use Y, so we're okay
+            iny                 ; Increment the counter
+            cpy CHARAC          ; For wAx, strings need to max out at 16
+            bne loop            ; ,,
+str_done:   lda #QUOTE          ; Close the quote
+            jsr AddInput        ; ,,
+            jmp Transcribe
+                        
 ; Expand External Program Counter
 ; Replace asterisk with the C_PT
 ExpandCP:   jsr ResetOut

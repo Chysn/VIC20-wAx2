@@ -332,5 +332,11 @@
 875 ., *    lda ('vr',x)
 880 ., *    lda ('vr'),y
 890 .= 6800 a164b164a128b128
+891 ts$ = "testing str" : c$ = "!"
+892 .a 6850 'ts$'
+893 .a *    ldx #/'c$'
+894 .= 6850 54455354494e4720
+895 .= *    535452
+896 .= *    a221 ; ldx #"!"
 999 print "{up}           {blue}[far out]{black}"
 1000 print:print "{green}all tests pass!{blue}"
