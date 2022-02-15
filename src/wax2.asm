@@ -3010,7 +3010,7 @@ HelpScr1:   .asc LF
 HelpScr2:   .asc "L LOAD    ",$dd,"T TRANSFER",LF
             .asc "S SAVE    ",$dd,$5e," STAGE",LF
             .asc "F FILES   ",$dd,"= TEST",LF
-            .asc "$ HEX2DEC ",171,192,192,"PLUG-IN",192,LF
+            .asc "$ HEX2DEC ",171,192,"PLUG-IN",192,192,LF
             .asc "# DEC2HEX ",$dd,"U INVOKE",LF
             .asc "X EXIT    ",$dd,"P INSTALL",LF,$00
         
@@ -3874,10 +3874,10 @@ AddByte:    pha
             sta (C_PT,x)
             jsr IncCP
             lda C_PT+1          ; Check memory for end of BASIC
-            cmp $37             ; ,,
+            cmp $38             ; ,,
             bcc ok              ; ,,
             lda C_PT            ; ,,
-            cmp $38             ; ,,
+            cmp $37             ; ,,
             beq OutOfMem        ; If at limit of memory, then ERROR
 ok:         pla                 ; Who cares about PLA in case of error
             rts        
