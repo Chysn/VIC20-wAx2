@@ -3000,19 +3000,20 @@ Intro:      .asc LF," ",$b0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
 Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0
             .asc "P",$c0,$c0,"S",$c0,$c0,"PC",$c0,$c0,LF,".",";",$00
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc LF,"D 6502 DIS E 6502+EXT",LF
-            .asc "A ASSEMBLE R REGISTER",LF
-            .asc "G GO       B BRKPOINT",LF
-            .asc "M MEMORY   I TEXT",LF
-            .asc "% BINARY   = ASSERT",LF
-            .asc "T TRANSFER C COMPARE",LF,$00
-HelpScr2:   .asc "@ SYMBOLS  * SET CP",LF
-            .asc "L LOAD     S SAVE",LF
-            .asc "F FILES    ",$5e," STAGE",LF
-            .asc "$ HEX2DEC  # DEC2HEX",LF
-            .asc "P INSTALL  U PLUG-IN",LF
-            .asc "X EXIT     ? HELP",LF,$00
-
+HelpScr1:   .asc LF
+            .asc "D 6502 DIS",$dd,"A ASSEMBLE",LF
+            .asc "E 6502+EXT",$dd,"G GO",LF
+            .asc "M MEMORY  ",$dd,"R REGISTER",LF
+            .asc "I TEXT    ",$dd,"B BRKPOINT",LF
+            .asc "% BINARY  ",$dd,"@ SYMBOLS",LF
+            .asc "C COMPARE ",$dd,"* SET CP",LF,$00
+HelpScr2:   .asc "L LOAD    ",$dd,"T TRANSFER",LF
+            .asc "S SAVE    ",$dd,$5e," STAGE",LF
+            .asc "F FILES   ",$dd,"= TEST",LF
+            .asc "$ HEX2DEC ",171,192,192,"PLUG-IN",192,LF
+            .asc "# DEC2HEX ",$dd,"U INVOKE",LF
+            .asc "X EXIT    ",$dd,"P INSTALL",LF,$00
+        
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
 LabErrMsg:  .asc "SYMBO",$cc
