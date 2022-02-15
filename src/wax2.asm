@@ -1446,7 +1446,7 @@ srch_stop:  jsr ResetOut        ; Start a new output buffer to indicate the
             jsr Space           ;   followed by a space
             jsr ShowAddr        ;   ,,
             jsr PrintBuff       ;   ,,
-            jsr CPtoBASIC       ; Update CP variable
+            jsr Addr2CP         ; Update Command Pointer
 srch_r:     rts               
             
 ; Memory Search
@@ -1461,7 +1461,7 @@ no_scr_c:   cmp (W_ADDR),y      ; Do the compare
             bne no_match        ; If this doesn't match, need to move on
             iny                 ; Otherwise, check for additional matches
             cpy SEARCH_S
-            bne loop            ; ,,
+            bne loop
             beq mem_found
 no_match:   jmp next_check
 mem_found:  jsr ResetOut
