@@ -1394,24 +1394,42 @@ setup_err:  jmp save_err
 ; SEARCH
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Search
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Search:     bcc srch_r          ; Bail if the address is no good
-            lda INBUFFER+4      ; Bail if there's nothing to search
-            beq srch_r          ; ,,
-            lda #SEARCH_L       ; Set the search limit (in pages)
+Search:     bcs s_addr_ok       ; Syntax error if no good address
+search_err: jmp SYNTAX_ERR      ; ,,
+s_addr_ok:  lda INBUFFER+4      ; Or nothing to search
+            beq search_err      ; ,,
+            lda #SEARCH_L       ; Move search limit to countdown
             sta SEARCH_C        ; ,,
-            lda #0              ; Reset search size
-            sta SEARCH_S        ; ,,
-next_srch:  jsr ISCNTC          ; Keep searching code until the user presses
-            beq srch_stop       ;   Stop key
+            lda #0              ; Initialize search size (for memory and string
+            sta SEARCH_S        ;   searches
+            sta WORK+1          ; Set to 1 for screen code search
+            jsr ResetOut        ; Reset output
+            lda INBUFFER+4      ; What kind of search is this?
+            cmp #":"            ;   If a hex search, do setup      
+            bne s_ch_quote      ;   ,,
+            jmp SetupHex        ;   ,,
+s_ch_quote: cmp #QUOTE          ;   If a string search, do setup
+            bne s_ch_scc        ;   ,,
+            jmp SetupText       ;   ,,
+s_ch_scc:   cmp #"/"            ;   If a screen code search, do setup
+            bne next_srch       ;   ,,
+            inc WORK+1          ;   ,,
+            lda INBUFFER+5      ;   ,, Quote must immediately follow / for
+            cmp #QUOTE          ;   ,, a screen code search
+            bne search_err      ;   ,,
+            jmp SetupText       ;   ,,
+next_srch:  jsr ISCNTC          ; Check for STOP key
+            beq srch_stop       ;   and finish search early if pressed
             lda W_ADDR+1        ; Store the working address high byte for
             pha                 ;   later comparison
-            jsr ResetOut        ; Clear output buffer for possible result
-            lda INBUFFER+4      ; What kind of search is this?
-            cmp #":"            ; Convert a hex search into a character search
-            beq SetupHex        ; ,,
-            cmp #QUOTE          ; Character search
-            beq MemSearch       ; ,,
-            jmp CodeSearch      ; Default to code search
+            lda INBUFFER+4
+            cmp #":"
+            beq MemSearch
+            cmp #QUOTE
+            beq MemSearch
+            cmp #"/"
+            beq MemSearch
+            jmp CodeSearch
 check_end:  pla                 ; Has the working address high byte advanced?
             cmp W_ADDR+1        ;   ,,
             beq next_srch       ; If not, continue the search
@@ -1429,51 +1447,67 @@ srch_stop:  jsr ResetOut        ; Start a new output buffer to indicate the
             jsr ShowAddr        ;   ,,
             jsr PrintBuff       ;   ,,
             jsr CPtoBASIC       ; Update CP variable
-srch_r:     rts   
-
+srch_r:     rts               
+            
 ; Memory Search
 ; Compare a sequence of bytes in memory to the input. If there's a match,
 ; indicate the starting address of the match.            
-MemSearch:  ldy #0
--loop:      lda INBUFFER+5,y
-            cmp (W_ADDR),y
-            bne no_match
-            iny
-            bne loop
-no_match:   ldx SEARCH_S
-            beq end_quote
+MemSearch:  ldy WORK+1          ; Start index for search
+-loop:      lda INBUFFER+5,y    ; Get character to search
+            ldx WORK+1
+            beq no_scr_c
+            jsr PETtoScr        ; Perform PETSCII to screen code conversion
+no_scr_c:   cmp (W_ADDR),y      ; Do the compare
+            bne no_match        ; If this doesn't match, need to move on
+            iny                 ; Otherwise, check for additional matches
             cpy SEARCH_S
-            bcs mem_found
-            bcc next_check
-end_quote:  cmp #QUOTE          ; Is this the end of the search?
-            bne next_check
-mem_found:  jsr AddrPrefix
-            jsr ShowAddr
+            bne loop            ; ,,
+            beq mem_found
+no_match:   jmp next_check
+mem_found:  jsr ResetOut
+            jsr AddrPrefix
+            lda W_ADDR
+            clc
+            adc WORK+1
+            sta W_ADDR
+            bcc no_scr_c2
+            inc W_ADDR+1
+no_scr_c2:  jsr ShowAddr
             jsr PrintBuff
 next_check: jsr IncAddr  
-            jmp check_end
+            jmp check_end                      
+
+; Setup Text Search
+SetupText:  ldy WORK+1
+-loop:      lda INBUFFER+5,y
+            cmp #QUOTE
+            beq su_txt_r
+            iny
+            cpy #17
+            bne loop
+su_txt_r:   sty SEARCH_S
+            jmp next_srch
             
 ; Setup Hex Search
 ; by converting a hex search into a memory search. Transcribe hex characters
 ; into the input as values.       
-SetupHex:   lda #QUOTE
-            sta INBUFFER+4
-            lda #$05            ; Place the input index after the quote so
+SetupHex:   lda #$05            ; Place the input index after the colon so
             sta IDX_IN          ;   it can get hex bytes
             ldy #$00            ; Count the number of hex bytes
 -loop:      jsr HexGet          ; Is it a valid hex character?
             bcc setup_done      ; If not, the transcription is done
             sta INBUFFER+5,y    ; Store the byte in the buffer
-            iny
-            cpy #$08
+            iny                 ; Grab up to eight bytes
+            cpy #$08            ;   ,,
             bne loop
-setup_done: sty SEARCH_S
-            jmp check_end    
+setup_done: sty SEARCH_S        ; Set search size
+            jmp next_srch    
  
 ; Code Search
 ; Disassemble code from the working address. If the disassembly at that
 ; address matches the input, indicate the starting address of the match.
-CodeSearch: jsr AddrPrefix+3    ; Show address display convention, w/o prompt
+CodeSearch: jsr ResetOut
+            jsr AddrPrefix+3    ; Show address display convention, w/o prompt
             jsr ShowAddr
             lda #0
             jsr CharOut
@@ -1482,8 +1516,8 @@ CodeSearch: jsr AddrPrefix+3    ; Show address display convention, w/o prompt
             jsr IsMatch+2       ;   IsMatch after its LDX. If there's a match,
             bcs code_found      ;   show the code
             jmp check_end
-code_found: lda #WEDGE          ; Show prompt if there's a match
-            jsr CHROUT          ; ,,
+code_found: lda #WEDGE
+            jsr CHROUT
             jsr PrintBuff       ; Print address and disassembly   
             jmp check_end       ; Go back for more      
       
@@ -2589,7 +2623,9 @@ InterpVar:  ldy #0
             cmp #"$"            ; String variable?
             bne ch_eov          ; ,,
             ror CHARAC          ; Set string variable flag
-            bcc next_vch        ; Keep looking for closing single quote
+            jsr CHRGET          ; The closing quote is expected immediately
+            cmp #"'"            ;   after a $, or it's a syntax error
+            bne int_err         ;   ,,
 ch_eov:     cmp #"'"            ; If the closing quote is found,
             beq val_var         ;   then find the variable
             sta $45,y           ; Store next variable name character
@@ -2645,6 +2681,7 @@ is_string:  lda #QUOTE          ; This is a string variable, so add quote to
             jsr AddInput        ;   the input buffer
             ldx #0              ; Get the string size here
             lda ($47,x)         ; ,,
+            beq int_err         ; Error if it's not set
             cmp #17             ; If it's bigger than wAx can handle, shorten it
             bcc str_sz_ok       ; ,,
             lda #16             ; ,,
