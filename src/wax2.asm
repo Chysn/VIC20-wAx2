@@ -4054,15 +4054,27 @@ CONSEC_0S   = $024c             ; Consecutive zeroes
 uBASIC:     jmp ph_basic
             ; Command templates
             .asc $00,".U R [L# [INC]]",$0d
-            .asc ".U L STAGE [STAGE...]",$00
+            .asc ".U L STAGE [STAGE...]",$0d
+            .asc ".U O",$00
 ph_basic:   jsr ResetIn         ; Route to utility
             jsr CharGet         ; ,,
-            cmp #"L"            ; ,,
+            cmp #"O"            ; ,, Old utility
+            beq Old             ; ,,
+            cmp #"L"            ; ,, Link utility
             beq Link            ; ,,
-            cmp #"R"            ; ,,
+            cmp #"R"            ; ,, Renumber utility
             bne basic_err       ; ,,
             jmp Renum           ; ,,
 basic_err:  jmp SYNTAX_ERR      ; ,,
+
+; Old
+; Restore a NEWed program
+Old:        ldy #0              ; Index from start of memory
+            sta ($2b),y         ; A is "O" at this point, but it doesn't matter
+            iny                 ; Same as the next byte
+            sta ($2b),y         ; ,,
+            jsr Rechain         ; Fix the links
+            jmp (READY)
 
 ; BASIC Link
 ; Copy the specified BASIC stage to the current stage
