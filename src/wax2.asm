@@ -1977,7 +1977,12 @@ set_ptrs:   lda W_ADDR+1        ; Set up the BASIC start of memory pointer
             cpy #$16            ; If we reach the end without seeing an "N",
             bne loop            ;   just rechain the area as if it were a BASIC
             beq finish          ;   program
-new:        jsr $c642           ; Perform BASIC NEW
+new:        dec $2b             ; Zero out byte before start-of-BASIC memory,
+            lda #0              ;   in order to avoid ?SYNTAX ERROR on RUN.
+            tay                 ;   The NEW routine doesn't do this.
+            sta ($2b),y         ;   ,,
+            inc $2b             ; Restore start-of-BASIC low byte
+            jsr $c644           ; Perform BASIC NEW
 finish:     jsr Rechain
             jmp (READY)
 st_range:   jsr ResetOut        ; Show the start and end pages of the current
@@ -4070,7 +4075,7 @@ basic_err:  jmp SYNTAX_ERR      ; ,,
 ; Old
 ; Restore a NEWed program
 Old:        ldy #0              ; Index from start of memory
-            sta ($2b),y         ; A is "O" at this point, but it doesn't matter
+            sta ($2b),y         ; A is "O" here, but it doesn't matter
             iny                 ; Same as the next byte
             sta ($2b),y         ; ,,
             jsr Rechain         ; Fix the links
