@@ -5,6 +5,9 @@ printf "\x00\xa0" | cat - ./vic/wax2.bin > ./vic/wax2.prg
 cat ./vic/wax2.bin ./src/padding.bin | head -c 8192 > ./vic/wax2.eep
 cp ./vic/wax2.prg ~/vic20/wax2
 
+## Make CRT file
+/Applications/vice-x86-64-gtk3-3.6.2-dev-r41706/bin/cartconv -t vic20 -i ./vic/wax2.prg -o ./vic/wax2.crt -p
+
 ## Build test suite
 petcat -w2 -o vic/wax2test.prg -- src/wax2test.bas
 cp ./vic/wax2test.prg ~/vic20/

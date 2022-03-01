@@ -2642,7 +2642,7 @@ val_var:    lda $45             ; Validate the found variable name;
             jsr CHRTST          ;   if first character <A or >Z, then error
             bcc int_err         ;   ,,
             lda $46             ; Validate the second character. If it's 0,
-            beq find_var        ;   then it's a one-variable name, so OK
+            beq find_var        ;   then it's a one-variable name, and
             jsr CHRTST          ;   the name is OK
             bcs find_var        ;   ,,
             cmp #"9"+1          ; If the second character >9 then error
