@@ -3012,9 +3012,10 @@ HelpScr1:   .asc LF
             .asc "I TEXT    ",$dd,"B BRKPOINT",LF
             .asc "% BINARY  ",$dd,"@ SYMBOLS",LF
             .asc "C COMPARE ",$dd,"* SET CP",LF,$00
-HelpScr2:   .asc "L LOAD    ",$dd,"T TRANSFER",LF
-            .asc "S SAVE    ",$dd,$5e," STAGE",LF
-            .asc "F FILES   ",$dd,"= TEST",LF
+HelpScr2:   .asc "H SEARCH  ",$dd,"T TRANSFER",LF
+            .asc "L LOAD    ",$dd,$5e," STAGE",LF 
+            .asc "S SAVE    ",$dd,"= TEST",LF
+            .asc "F FILES   ",$dd,LF
             .asc "$ HEX2DEC ",171,192,"PLUG-IN",192,192,LF
             .asc "# DEC2HEX ",$dd,"U INVOKE",LF
             .asc "X EXIT    ",$dd,"P INSTALL",LF,$00

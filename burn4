@@ -1,0 +1,3 @@
+#!/bin/bash
+
+minipro -p ST2764A@DIP28 -y -w ./vic/wax2.eep
