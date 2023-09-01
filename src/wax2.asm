@@ -2533,22 +2533,24 @@ wAxPrompt:  lda #WEDGE
             ; Fall through to CharOut
             
 ; Character to Output
-; Add the character in A to the outut byffer            
+; Add the character in A to the outut buffer            
 CharOut:    sta CHARAC          ; Save temporary character
             tya                 ; Save registers
             pha                 ; ,,
             txa                 ; ,,
             pha                 ; ,,
             ldx IDX_OUT         ; Write to the next OUTBUFFER location
+            cpx #$18			; ,, prevent buffer overflow
+            bcs write_r			; ,, ,,
             lda CHARAC          ; ,,
             sta OUTBUFFER,x     ; ,,
             inc IDX_OUT         ; ,,
-            pla                 ; Restore registers
+write_r:    pla                 ; Restore registers
             tax                 ; ,,
             pla                 ; ,,
             tay                 ; ,,
             lda CHARAC          ; ,,
-write_r:    rts             
+            rts             
             
 ; Write hexadecimal character
 HexOut:     pha                 ; Hex converter based on from WOZ Monitor,
@@ -4060,7 +4062,7 @@ CONSEC_0S   = $024c             ; Consecutive zeroes
 uBASIC:     jmp ph_basic
             ; Command templates
             .asc $00,".U R [L# [INC]]",$0d
-            .asc ".U L STAGE [STAGE...]",$0d
+            .asc ".U L STAGE [S2..]",$0d
             .asc ".U O",$00
 ph_basic:   jsr ResetIn         ; Route to utility
             jsr CharGet         ; ,,
