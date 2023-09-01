@@ -375,11 +375,11 @@ List:       bcc list_cont       ; If no start address, continue list at W_ADDR
             jsr HexGet          ;   ,,
             bcc start_list      ;   ,,
             sta RANGE_END       ;   ,,
-            cmp W_ADDR
-            lda RANGE_END+1
-            sbc W_ADDR+1
-            bcs lrange_ok
-lrange_bad: jmp list_r
+            cmp W_ADDR			; Bail out immediately if the end range is
+            lda RANGE_END+1		;   lower than the start range
+            sbc W_ADDR+1		;   ,,
+            bcs lrange_ok		;   ,,
+lrange_bad: jmp list_r			;   ,,
 lrange_ok:  ldx #$80            ; When X=$80, list won't stop after LIST_NUM
             bne ListLine        ;   lines, but will go through range unless STOP
 list_cont:  lda C_PT            ; Otherwise, set the working addresss to the
@@ -489,14 +489,14 @@ shift_l:    asl MNEM+1          ;   as a 24-bit register into Accumulator, which
             dey
             bne shift_l
             ;clc                ; Carry is clear from the last ROL
-            adc #"@"            ; Get the PETSCII character
-            jsr CharOut
-            dex
-            bne loop
-            pla
-            sta MNEM
-            pla
-            sta MNEM+1
+            adc #"@"            ; Get the PETSCII character and
+            jsr CharOut			;   output it
+            dex					; Get the next five-bit chunk
+            bne loop			; ,,
+            pla					; Restore the mnemonic code to its pre-
+            sta MNEM			;   un-encoded form
+            pla					;   ,,
+            sta MNEM+1			;   ,,
 mnemonic_r: rts
 
 ; Operand Display
@@ -759,17 +759,17 @@ ImmedOp:    jsr CharGet         ; This is the character right after #
             cmp #"$"            ; If it's $, go back to get regular $ operand
             beq main_op         ; ,,
 try_slash:  cmp #"/"            ; If it's a quote preceeded by a slash, treat
-            bne try_quote
-            ldy IDX_IN
-            dey
-            lda #1
-            sta INBUFFER,y
-            jsr CharGet
-            cmp #QUOTE
-            bne ASM_ERROR
-            jsr CharGet
-            jsr PETtoScr
-            jmp close_qu
+            bne try_quote		;   the next quoted string as a screen code
+            ldy IDX_IN			;   rather than a character code
+            dey					;   ,,
+            lda #1				;   ,,
+            sta INBUFFER,y		;   ,,
+            jsr CharGet			;   ,,
+            cmp #QUOTE			;   ,, If the character after / is't a quote,
+            bne ASM_ERROR		;   ,,   that's an error
+            jsr CharGet			;   ,, Get the next character after the quote,
+            jsr PETtoScr		;   ,,   and convert it to a screen code
+            jmp close_qu		;   ,,
 try_quote:  cmp #QUOTE          ; If it's a double quote, make sure it's a one
             bne try_binary      ;   character surrounded by quotes. If it is,
             jsr CharGet         ;   set it as the operand and convert it to
@@ -1008,21 +1008,21 @@ compute_r:  rts
 ; MEMORY DISPLAY
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Display
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Memory:     ldy #$00
--loop:      jsr ReverseOn
-            cpy #0
-            beq r_on
-            cpy #2
-            beq r_on
-            lda #RVS_OFF
-            jsr CharOut
-r_on:       lda (W_ADDR),y
-            sta CHARDISP,y
-            jsr HexOut
-            iny
-            cpy #$04
-            beq show_char
-            jmp loop       
+Memory:     ldy #$00			; Y is the offset for the address start
+-loop:      jsr ReverseOn		; Start by turning on Reverse
+            cpy #0				; For the first location, leave Reverse on
+            beq r_on			; ,,
+            cpy #2				; For the third location, leave Reverse on
+            beq r_on			; ,,
+            lda #RVS_OFF		; For the second and and fourth locations,
+            jsr CharOut			;   turn reverse off
+r_on:       lda (W_ADDR),y		; Get the value at the offset
+            sta CHARDISP,y		;   Put that value in the right-hand display
+            jsr HexOut			;   and then show the value
+            iny					; Move to the next value
+            cpy #$04			; Show the right-size characters if done
+            beq show_char		; ,,
+            jmp loop       		; ,, otherwise continue
 show_char:  lda #";"            ; Comment after hex values
             jsr CharOut         ; ,,
             jsr ReverseOn       ; Reverse on for the characters
@@ -2540,7 +2540,7 @@ CharOut:    sta CHARAC          ; Save temporary character
             txa                 ; ,,
             pha                 ; ,,
             ldx IDX_OUT         ; Write to the next OUTBUFFER location
-            cpx #$18			; ,, prevent buffer overflow
+            cpx #$18			; ,, prevent buffer overwrite
             bcs write_r			; ,, ,,
             lda CHARAC          ; ,,
             sta OUTBUFFER,x     ; ,,
