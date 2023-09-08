@@ -51,7 +51,7 @@ T_DIS       = "D"               ; Tool character D for disassembly
 T_XDI       = "E"               ; Tool character E for extended opcodes
 T_ASM       = "A"               ; Tool character A for assembly
 T_ASM_AL    = ","               ;   Alias for assembly
-T_MEM       = "M"               ; Tool character : for memory dump
+T_MEM       = "M"               ; Tool character M for memory dump
 T_BIN       = "%"               ; Tool character % for binary dump
 T_TST       = $b2               ; Tool character = for tester
 T_BRK       = "B"               ; Tool character B for breakpoint
@@ -123,7 +123,6 @@ SYS_DEST    = $14               ; Pointer for SYS destination
 
 ; System resources - Data
 KEYWORDS    = $c09e             ; Start of BASIC kewords for detokenize
-BUF         = $0200             ; Input buffer
 CHARAC      = $07               ; Temporary character
 KEYBUFF     = $0277             ; Keyboard buffer and size, for automatically
 KBSIZE      = $c6               ;   advancing the assembly address
@@ -197,8 +196,8 @@ OPERAND     = $ab               ; Operand storage (2 bytes)
 IDX_OUT     = $ad               ; Buffer index - Output
 IDX_IN      = $ae               ; Buffer index - Input
 TOOL_CHR    = $af               ; Current function (T_ASM, T_DIS)
-OUTBUFFER   = $0218             ; Output buffer (24 bytes)
-INBUFFER    = $0230             ; Input buffer (22 bytes)
+OUTBUFFER   = $0200             ; Output buffer (48 bytes)
+INBUFFER    = $0230             ; Input buffer transcription (22 bytes)
 USR_STORE   = $0247             ; Plug-in storage (8 bytes)
 IDX_SYM     = $024f             ; Temporary symbol index storage
 SEARCH_C    = $0250             ; Search counter
@@ -1009,14 +1008,15 @@ compute_r:  rts
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Display
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Memory:     ldy #$00			; Y is the offset for the address start
--loop:      jsr ReverseOn		; Start by turning on Reverse
-            cpy #0				; For the first location, leave Reverse on
-            beq r_on			; ,,
-            cpy #2				; For the third location, leave Reverse on
-            beq r_on			; ,,
-            lda #RVS_OFF		; For the second and and fourth locations,
-            jsr CharOut			;   turn reverse off
-r_on:       lda (W_ADDR),y		; Get the value at the offset
+-loop:      cpy #0				; For the first location and third locations,
+            beq r_on			;   turn reverse on, otherwise, turn reverse
+            cpy #2				;   off.
+            beq r_on			;   ,,
+            lda #RVS_OFF		;   ,,
+            .byte $3c           ;   ,, TOP (skip word) 
+r_on:       lda #RVS_ON			;   ,,
+            jsr CharOut			;   ,,
+            lda (W_ADDR),y		; Get the value at the offset
             sta CHARDISP,y		;   Put that value in the right-hand display
             jsr HexOut			;   and then show the value
             iny					; Move to the next value
@@ -1025,7 +1025,7 @@ r_on:       lda (W_ADDR),y		; Get the value at the offset
             jmp loop       		; ,, otherwise continue
 show_char:  lda #";"            ; Comment after hex values
             jsr CharOut         ; ,,
-            jsr ReverseOn       ; Reverse on for the characters
+            jsr ReverseOn		; Reverse interpreted characters
             ldy #$00
 -loop:      lda CHARDISP,y
             cmp #$a0            ; Everything from 160 on is allowed in the
@@ -2038,8 +2038,7 @@ newline:    jsr ISCNTC          ; Exit if STOP key is pressed
             jsr wAxPrompt       ;   to the output buffer
             lda #T_LOA          ;   ,,
             jsr CharOut         ;   ,,
-            lda #$22            ;   ,,
-            jsr CharOut         ;   ,,
+            jsr DQuote
 set_quote:  sec                 ; Set the quote flag to either %10000000 or
             ror QUOTE_FL        ;   %11000000
             bcc loop            ; Go back for next character
@@ -2050,8 +2049,7 @@ proc_name:  bit QUOTE_FL        ; Check the quote state
             jmp loop            ;   part of a name
 EOL:        bit QUOTE_FL        ; If a quote hasn't been finished, end of dir
             bvc EOF             ; ,,
-            lda #$22            ; Add the ending quote mark and CR to the buffer
-            jsr CharOut         ;   ,,
+            jsr DQuote          ; Add the ending quote mark and CR to the buffer
             bit FIRST_REC       ; Is this the first record?
             bpl subseq          ; If so, skip the display
             jsr Match           ; Perform a text match, if necessary
@@ -2120,8 +2118,7 @@ Rechain:    jsr $c533           ; Re-chain BASIC program to set BASIC
 ; TEXT DISPLAY (INTERPRET)
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Display#text-display
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-TextDisp:   lda #$22
-            jsr CharOut
+TextDisp:   jsr DQuote
             ldy #$00
 -loop:      jsr IncAddr
             cmp #$a0            ; Everything from 160 on is allowed in the
@@ -2135,8 +2132,7 @@ tadd_char:  jsr CharOut         ; ,,
             iny
             cpy #$0c
             bne loop
-            lda #QUOTE
-            jmp CharOut
+            jmp DQuote
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; COMPARE
@@ -2519,6 +2515,8 @@ AddrPrefix: jsr wAxPrompt
 ; Commonly-Used Characters
 Space:      lda #" "
             .byte $3c           ; TOP (skip word)
+DQuote:		lda #QUOTE
+            .byte $3c           ; TOP (skip word)
 Semicolon:  lda #";"            
             .byte $3c           ; TOP (skip word)
 ReverseOn:  lda #RVS_ON
@@ -2540,18 +2538,18 @@ CharOut:    sta CHARAC          ; Save temporary character
             txa                 ; ,,
             pha                 ; ,,
             ldx IDX_OUT         ; Write to the next OUTBUFFER location
-            cpx #$18			; ,, prevent buffer overwrite
-            bcs write_r			; ,, ,,
+            cpx #$30			; ,, Prevent buffer overwrite
+            bcs charout_r		; ,, 
             lda CHARAC          ; ,,
             sta OUTBUFFER,x     ; ,,
             inc IDX_OUT         ; ,,
-write_r:    pla                 ; Restore registers
+charout_r:  pla                 ; Restore registers
             tax                 ; ,,
             pla                 ; ,,
             tay                 ; ,,
             lda CHARAC          ; ,,
-            rts             
-            
+            rts
+                        
 ; Write hexadecimal character
 HexOut:     pha                 ; Hex converter based on from WOZ Monitor,
             lsr                 ;   Steve Wozniak, 1976
