@@ -6,6 +6,7 @@
 ;                  
 ; Release 1  - May 16, 2020
 ; wAx2       - January 23, 2022
+; wax2.1     - September 8, 2023
 ; Assembled with XA
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -374,11 +375,11 @@ List:       bcc list_cont       ; If no start address, continue list at W_ADDR
             jsr HexGet          ;   ,,
             bcc start_list      ;   ,,
             sta RANGE_END       ;   ,,
-            cmp W_ADDR			; Bail out immediately if the end range is
-            lda RANGE_END+1		;   lower than the start range
-            sbc W_ADDR+1		;   ,,
-            bcs lrange_ok		;   ,,
-lrange_bad: jmp list_r			;   ,,
+            cmp W_ADDR          ; Bail out immediately if the end range is
+            lda RANGE_END+1     ;   lower than the start range
+            sbc W_ADDR+1        ;   ,,
+            bcs lrange_ok       ;   ,,
+lrange_bad: jmp list_r          ;   ,,
 lrange_ok:  ldx #$80            ; When X=$80, list won't stop after LIST_NUM
             bne ListLine        ;   lines, but will go through range unless STOP
 list_cont:  lda C_PT            ; Otherwise, set the working addresss to the
@@ -489,13 +490,13 @@ shift_l:    asl MNEM+1          ;   as a 24-bit register into Accumulator, which
             bne shift_l
             ;clc                ; Carry is clear from the last ROL
             adc #"@"            ; Get the PETSCII character and
-            jsr CharOut			;   output it
-            dex					; Get the next five-bit chunk
-            bne loop			; ,,
-            pla					; Restore the mnemonic code to its pre-
-            sta MNEM			;   un-encoded form
-            pla					;   ,,
-            sta MNEM+1			;   ,,
+            jsr CharOut         ;   output it
+            dex                 ; Get the next five-bit chunk
+            bne loop            ; ,,
+            pla                 ; Restore the mnemonic code to its pre-
+            sta MNEM            ;   un-encoded form
+            pla                 ;   ,,
+            sta MNEM+1          ;   ,,
 mnemonic_r: rts
 
 ; Operand Display
@@ -758,17 +759,17 @@ ImmedOp:    jsr CharGet         ; This is the character right after #
             cmp #"$"            ; If it's $, go back to get regular $ operand
             beq main_op         ; ,,
 try_slash:  cmp #"/"            ; If it's a quote preceeded by a slash, treat
-            bne try_quote		;   the next quoted string as a screen code
-            ldy IDX_IN			;   rather than a character code
-            dey					;   ,,
-            lda #1				;   ,,
-            sta INBUFFER,y		;   ,,
-            jsr CharGet			;   ,,
-            cmp #QUOTE			;   ,, If the character after / is't a quote,
-            bne ASM_ERROR		;   ,,   that's an error
-            jsr CharGet			;   ,, Get the next character after the quote,
-            jsr PETtoScr		;   ,,   and convert it to a screen code
-            jmp close_qu		;   ,,
+            bne try_quote       ;   the next quoted string as a screen code
+            ldy IDX_IN          ;   rather than a character code
+            dey                 ;   ,,
+            lda #1              ;   ,,
+            sta INBUFFER,y      ;   ,,
+            jsr CharGet         ;   ,,
+            cmp #QUOTE          ;   ,, If the character after / is't a quote,
+            bne ASM_ERROR       ;   ,,   that's an error
+            jsr CharGet         ;   ,, Get the next character after the quote,
+            jsr PETtoScr        ;   ,,   and convert it to a screen code
+            jmp close_qu        ;   ,,
 try_quote:  cmp #QUOTE          ; If it's a double quote, make sure it's a one
             bne try_binary      ;   character surrounded by quotes. If it is,
             jsr CharGet         ;   set it as the operand and convert it to
@@ -1007,25 +1008,25 @@ compute_r:  rts
 ; MEMORY DISPLAY
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Display
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Memory:     ldy #$00			; Y is the offset for the address start
--loop:      cpy #0				; For the first location and third locations,
-            beq r_on			;   turn reverse on, otherwise, turn reverse
-            cpy #2				;   off.
-            beq r_on			;   ,,
-            lda #RVS_OFF		;   ,,
+Memory:     ldy #$00            ; Y is the offset for the address start
+-loop:      cpy #0              ; For the first location and third locations,
+            beq r_on            ;   turn reverse on, otherwise, turn reverse
+            cpy #2              ;   off.
+            beq r_on            ;   ,,
+            lda #RVS_OFF        ;   ,,
             .byte $3c           ;   ,, TOP (skip word) 
-r_on:       lda #RVS_ON			;   ,,
-            jsr CharOut			;   ,,
-            lda (W_ADDR),y		; Get the value at the offset
-            sta CHARDISP,y		;   Put that value in the right-hand display
-            jsr HexOut			;   and then show the value
-            iny					; Move to the next value
-            cpy #$04			; Show the right-size characters if done
-            beq show_char		; ,,
-            jmp loop       		; ,, otherwise continue
+r_on:       lda #RVS_ON         ;   ,,
+            jsr CharOut         ;   ,,
+            lda (W_ADDR),y      ; Get the value at the offset
+            sta CHARDISP,y      ;   Put that value in the right-hand display
+            jsr HexOut          ;   and then show the value
+            iny                 ; Move to the next value
+            cpy #$04            ; Show the right-size characters if done
+            beq show_char       ; ,,
+            jmp loop            ; ,, otherwise continue
 show_char:  lda #";"            ; Comment after hex values
             jsr CharOut         ; ,,
-            jsr ReverseOn		; Reverse interpreted characters
+            jsr ReverseOn       ; Reverse interpreted characters
             ldy #$00
 -loop:      lda CHARDISP,y
             cmp #$a0            ; Everything from 160 on is allowed in the
@@ -1156,22 +1157,47 @@ RegDisp:    jsr ResetOut
             lda #<Registers     ; Print register display bar
             ldy #>Registers     ; ,,
             jsr PrintStr        ; ,,
-            ldy #$00            ; Get registers' values from storage and add
--loop:      lda ACC,y           ;   each one to the buffer. These values came
-            jsr HexOut          ;   from the hardware IRQ, and are A,X,Y,P
-            jsr Space           ;   ,,
-            iny                 ;   ,,
-            cpy #$04            ;   ,,
+            lda #RVS_ON
+            sta WORK
+            ldy #$00            
+-loop:      lda WORK
+			jsr CharOut
+			eor #$80
+			sta WORK
+			lda ACC,y           ; Get register values from storage and add
+            jsr HexOut          ;   each one to the buffer. These values came
+            iny                 ;   from the hardware IRQ, and are A,X,Y
+            cpy #$03            ;   ,,
             bne loop            ;   ,,
+            lda WORK
+            jsr CharOut
             tsx                 ; Add stack pointer to the buffer
             txa                 ; ,,
             jsr HexOut          ; ,,
-            jsr Space           ; ,,
+            jsr Space
             lda SYS_DEST+1      ; Print high byte of SYS destination
             jsr HexOut          ; ,,
             lda SYS_DEST        ; Print low byte of SYS destination
             jsr HexOut          ; ,,
+            jsr Space
+            ldy #$07
+            lda #$80
+-loop:      bit PFMask
+			beq nextpf
+			pha
+            bit ACC+3
+            beq pfoff
+            lda #"+"
+            .byte $3c
+pfoff:      lda #"-"
+            jsr CharOut
+            pla
+nextpf:     lsr
+            dey
+            bpl loop
             jmp PrintBuff       ; Print the buffer
+                       
+PFMask:		.byte $cd			; Bitfield of relevant flags
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; BREAKPOINT MANAGER
@@ -1235,8 +1261,8 @@ Break:      pla                 ; Get values from stack and put them in the
             tax                 ;   ,,
             pla                 ;   ,,
             plp                 ; Get the processor status
-            cld                 ; Escape hatch for accidentally-set Decimal flag
             jsr SYS_TAIL        ; Store regiters in SYS locations
+            cld                 ; Escape hatch for accidentally-set Decimal flag
             pla                 ; Get Program Counter from interrupt and put
             sta SYS_DEST        ;   it in the Command Pointer
             pla                 ;   ,,
@@ -1245,6 +1271,9 @@ Break:      pla                 ; Get values from stack and put them in the
             ldy #>BreakMsg      ; ,,
             jsr PrintStr        ; ,,
             jsr RegDisp         ; Show the register display
+            lda ACC+3			; Decimal flag escape hatch, part 2
+            and #$f7			; ,, 
+            sta ACC+3           ; ,,
             jmp Return
             
 ; Clear Breakpoint   
@@ -2515,7 +2544,7 @@ AddrPrefix: jsr wAxPrompt
 ; Commonly-Used Characters
 Space:      lda #" "
             .byte $3c           ; TOP (skip word)
-DQuote:		lda #QUOTE
+DQuote:     lda #QUOTE
             .byte $3c           ; TOP (skip word)
 Semicolon:  lda #";"            
             .byte $3c           ; TOP (skip word)
@@ -2538,8 +2567,8 @@ CharOut:    sta CHARAC          ; Save temporary character
             txa                 ; ,,
             pha                 ; ,,
             ldx IDX_OUT         ; Write to the next OUTBUFFER location
-            cpx #$30			; ,, Prevent buffer overwrite
-            bcs charout_r		; ,, 
+            cpx #$30            ; ,, Prevent buffer overwrite
+            bcs charout_r       ; ,, 
             lda CHARAC          ; ,,
             sta OUTBUFFER,x     ; ,,
             inc IDX_OUT         ; ,,
@@ -2991,19 +3020,14 @@ ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
 ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
-wAxpander:  .asc CRSRUP,CRSRUP,CRSRUP,CRSRRT,CRSRRT
+wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
             .asc "WAXPANDER: WAX+27K",LF,LF,LF,$00
-Intro:      .asc LF," ",$b0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
-            .asc $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$ae,LF
-            .asc " ",$dd,"BEIGEMAZE.COM/WAX2",$dd,LF
+Intro:      .asc LF," ",$b0,"BEIGEMAZE.COM/WAX2",$ae,LF
             .asc " ",$dd,"                  ",$dd,LF
-            .asc " ",$dd,"                  ",$dd,LF
-            .asc " ",$dd,"   .? FOR HELP    ",$dd,LF
-            .asc " ",$ad,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
-            .asc $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0,$bd,LF,$00
+            .asc " ",$ad,$c0,"  .? FOR HELP   ",$c0,$bd,LF,$00
             
-Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0
-            .asc "P",$c0,$c0,"S",$c0,$c0,"PC",$c0,$c0,LF,".",";",$00
+Registers:  .asc LF,$b0,$c0,"A",$c0,"X",$c0,"Y",$c0
+            .asc "S",$c0,$c0,"PC",$c0,$c0,$c0,"NVDZC",LF,".",";",$00
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF
             .asc "D 6502 DIS",$dd,"A ASSEMBLE",LF
@@ -4042,8 +4066,7 @@ cnextline:  ldx #$08            ;   of the screen, composed of colons
 -loop:      jsr $ffd2           ;   ,,
             dex                 ;   ,,
             bne loop            ;   ,,
-            lda #$0d            ; Drop to the next line
-            jsr $ffd2           ; ,,
+            jsr Linefeed		; Drop to next line
             dey                 ; Iterate over rows
             bne cnextline       ; ,,
             rts
