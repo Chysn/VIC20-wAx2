@@ -1177,9 +1177,8 @@ pfoff:      lda #RVS_OFF
             jsr CharOut
             lda #";"
             jsr CharOut
-            
-            
-            ldy #$00 
+			cld                 ; Escape hatch for accidentally-set Decimal flag
+			ldy #0
 -loop:      lda ACC,y           ; Get register values from storage and add
             jsr HexOut          ;   each one to the buffer. These values came
             jsr Space			;   from the hardware IRQ, and are A,X,Y,P
@@ -1194,8 +1193,6 @@ pfoff:      lda #RVS_OFF
             jsr HexOut          ; ,,
             lda SYS_DEST        ; Print low byte of SYS destination
             jsr HexOut          ; ,,
-
-
             jmp PrintBuff       ; Print the buffer
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -1261,7 +1258,6 @@ Break:      pla                 ; Get values from stack and put them in the
             pla                 ;   ,,
             plp                 ; Get the processor status
             jsr SYS_TAIL        ; Store regiters in SYS locations
-            cld                 ; Escape hatch for accidentally-set Decimal flag
             pla                 ; Get Program Counter from interrupt and put
             sta SYS_DEST        ;   it in the Command Pointer
             pla                 ;   ,,
@@ -1270,9 +1266,6 @@ Break:      pla                 ; Get values from stack and put them in the
             ldy #>BreakMsg      ; ,,
             jsr PrintStr        ; ,,
             jsr RegDisp         ; Show the register display
-            lda ACC+3			; Decimal flag escape hatch, part 2
-            and #$f7			; ,, 
-            sta ACC+3           ; ,,
             jmp Return
             
 ; Clear Breakpoint   
