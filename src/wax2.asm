@@ -6,7 +6,6 @@
 ;                  
 ; Release 1  - May 16, 2020
 ; wAx2       - January 23, 2022
-; wax2.1     - September 8, 2023
 ; Assembled with XA
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1153,24 +1152,40 @@ Register:   jsr ResetIn
 register_r: rts
 
 ; Register Display            
-RegDisp:    jsr ResetOut
-            lda #<Registers     ; Print register display bar
+RegDisp:    lda #<Registers     ; Print register display bar
             ldy #>Registers     ; ,,
             jsr PrintStr        ; ,,
+            jsr ResetOut
+            ldy #$07
+            lda #$80
+-loop:      pha
+            bit ACC+3
+            beq pfoff
             lda #RVS_ON
-            sta WORK
-            ldy #$00            
--loop:      lda WORK
-			jsr CharOut
-			eor #$80
-			sta WORK
-			lda ACC,y           ; Get register values from storage and add
-            jsr HexOut          ;   each one to the buffer. These values came
-            iny                 ;   from the hardware IRQ, and are A,X,Y
-            cpy #$03            ;   ,,
-            bne loop            ;   ,,
-            lda WORK
+            .byte $3c
+pfoff:      lda #RVS_OFF
             jsr CharOut
+            lda PFNames,y
+            jsr CharOut
+            pla
+            lsr
+            dey
+            bpl loop
+            jsr PrintBuff
+            jsr ResetOut
+            lda #"."
+            jsr CharOut
+            lda #";"
+            jsr CharOut
+            
+            
+            ldy #$00 
+-loop:      lda ACC,y           ; Get register values from storage and add
+            jsr HexOut          ;   each one to the buffer. These values came
+            jsr Space			;   from the hardware IRQ, and are A,X,Y,P
+            iny                 ;   ,,
+            cpy #$04            ;   ,,
+            bne loop            ;   ,,
             tsx                 ; Add stack pointer to the buffer
             txa                 ; ,,
             jsr HexOut          ; ,,
@@ -1179,25 +1194,9 @@ RegDisp:    jsr ResetOut
             jsr HexOut          ; ,,
             lda SYS_DEST        ; Print low byte of SYS destination
             jsr HexOut          ; ,,
-            jsr Space
-            ldy #$07
-            lda #$80
--loop:      bit PFMask
-			beq nextpf
-			pha
-            bit ACC+3
-            beq pfoff
-            lda #"+"
-            .byte $3c
-pfoff:      lda #"-"
-            jsr CharOut
-            pla
-nextpf:     lsr
-            dey
-            bpl loop
+
+
             jmp PrintBuff       ; Print the buffer
-                       
-PFMask:		.byte $cd			; Bitfield of relevant flags
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; BREAKPOINT MANAGER
@@ -3022,12 +3021,13 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
             .asc "WAXPANDER: WAX+27K",LF,LF,LF,$00
-Intro:      .asc LF," ",$b0,"BEIGEMAZE.COM/WAX2",$ae,LF
+Intro:      .asc LF," ",$dd,"BEIGEMAZE.COM/WAX2",$dd,LF
             .asc " ",$dd,"                  ",$dd,LF
-            .asc " ",$ad,$c0,"  .? FOR HELP   ",$c0,$bd,LF,$00
+            .asc " ",$dd,"   .? FOR HELP    ",$dd,LF,$00
             
-Registers:  .asc LF,$b0,$c0,"A",$c0,"X",$c0,"Y",$c0
-            .asc "S",$c0,$c0,"PC",$c0,$c0,$c0,"NVDZC",LF,".",";",$00
+Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0,$c0
+            .asc "S ",$00
+PFNames:	.asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF
             .asc "D 6502 DIS",$dd,"A ASSEMBLE",LF
