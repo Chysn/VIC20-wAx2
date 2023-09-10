@@ -3018,8 +3018,8 @@ Intro:      .asc LF," ",$dd,"BEIGEMAZE.COM/WAX2",$dd,LF
             .asc " ",$dd,"                  ",$dd,LF
             .asc " ",$dd,"   .? FOR HELP    ",$dd,LF,$00
             
-Registers:  .asc LF,$b0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0,$c0
-            .asc "S ",$00
+Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
+            .asc $c0,"S",$ae,$00
 PFNames:	.asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF
