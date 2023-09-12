@@ -2023,8 +2023,7 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
 QUOTE_FL    = $0247             ; Quote flag for filename
 FIRST_REC   = $0248             ; First record flag
 
-Directory:  jsr ClearBP         ; Clear breakpoint
-            jsr CLALL           ; Close all files
+Directory:  jsr CLALL           ; Close all files
             lsr FIRST_REC       ; Clear first record flag
             lda #1              ; SETNAM - (1) Set name length
             ldx #<lfs+1         ; - Set name as the $ used below
