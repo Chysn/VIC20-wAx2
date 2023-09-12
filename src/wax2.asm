@@ -1152,36 +1152,34 @@ Register:   jsr ResetIn
 register_r: rts
 
 ; Register Display            
-RegDisp:    lda #<Registers     ; Print register display bar
+RegDisp:    cld                 ; Escape hatch for accidentally-set Decimal flag
+            lda #<Registers     ; Print register display bar
             ldy #>Registers     ; ,,
             jsr PrintStr        ; ,,
-            jsr ResetOut
-            ldy #$07
-            lda #$80
--loop:      pha
-            bit ACC+3
-            beq pfoff
-            lda #RVS_ON
-            .byte $3c
-pfoff:      lda #RVS_OFF
-            jsr CharOut
-            lda PFNames,y
-            jsr CharOut
-            pla
-            lsr
-            dey
-            bpl loop
-            jsr PrintBuff
-            jsr ResetOut
-            lda #"."
-            jsr CharOut
-            lda #";"
-            jsr CharOut
-			cld                 ; Escape hatch for accidentally-set Decimal flag
-			ldy #0
+            jsr ResetOut        ; ,,
+            ldy #$07            ; Print processor flag statuses
+            lda #$80            ; Bit value of flag (from bit 7 to 0)
+-loop:      pha                 ; ,,
+            bit ACC+3           ; Is this status flag on?
+            beq pfoff           ; ,,
+            lda #RVS_ON         ; If so, show it in reverse
+            .byte $3c           ; TOP (skip word)
+pfoff:      lda #RVS_OFF        ; Reverse off = flag is off
+            jsr CharOut         ; ,,
+            lda PFNames,y       ; If the flag isn't in the name list, don't show
+            jsr CharOut         ;   flag (I and B are not shown, for example)
+            pla                 ; Shift to the next flag's bit value
+            lsr                 ; ,,
+            dey                 ; Decrement the flag index
+            bpl loop            ; If there's another flag, go back for it
+            jsr PrintBuff       ; Otherwise, flush the status flags to display
+            jsr ResetOut        ; Reset output for register value line
+            jsr wAxPrompt       ; ,,
+            jsr Semicolon       ; ,,
+            ldy #0              ; Y is the register index from the SYS locations
 -loop:      lda ACC,y           ; Get register values from storage and add
             jsr HexOut          ;   each one to the buffer. These values came
-            jsr Space			;   from the hardware IRQ, and are A,X,Y,P
+            jsr Space           ;   from the hardware IRQ, and are A,X,Y,P
             iny                 ;   ,,
             cpy #$04            ;   ,,
             bne loop            ;   ,,
@@ -2025,7 +2023,8 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
 QUOTE_FL    = $0247             ; Quote flag for filename
 FIRST_REC   = $0248             ; First record flag
 
-Directory:  jsr CLALL           ; Close all files
+Directory:  jsr ClearBP         ; Clear breakpoint
+            jsr CLALL           ; Close all files
             lsr FIRST_REC       ; Clear first record flag
             lda #1              ; SETNAM - (1) Set name length
             ldx #<lfs+1         ; - Set name as the $ used below
@@ -3016,11 +3015,11 @@ wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
             .asc "WAXPANDER: WAX+27K",LF,LF,LF,$00
 Intro:      .asc LF," ",$dd,"BEIGEMAZE.COM/WAX2",$dd,LF
             .asc " ",$dd,"                  ",$dd,LF
-            .asc " ",$dd,"   .? FOR HELP    ",$dd,LF,$00
+            .asc " ",$dd,"     .?  HELP     ",$dd,LF,$00
             
 Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
-PFNames:	.asc "C","Z",$01,"D",$01,$01,"V","N"            
+PFNames:    .asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF
             .asc "D 6502 DIS",$dd,"A ASSEMBLE",LF
@@ -4059,7 +4058,7 @@ cnextline:  ldx #$08            ;   of the screen, composed of colons
 -loop:      jsr $ffd2           ;   ,,
             dex                 ;   ,,
             bne loop            ;   ,,
-            jsr Linefeed		; Drop to next line
+            jsr Linefeed        ; Drop to next line
             dey                 ; Iterate over rows
             bne cnextline       ; ,,
             rts
