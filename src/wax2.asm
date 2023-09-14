@@ -231,6 +231,7 @@ jNext:      jmp Next            ; a02d
 jDirectMode:jmp DirectMode      ; a030
 jSizeOf:    jmp SizeOf          ; a033
 jDisasm:    jmp Disasm          ; a036
+jSyntaxErr: jmp SyntaxErr		; a039
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -284,13 +285,7 @@ Main:       jsr CHRGET          ; Get the character from input or BASIC
             iny                 ; Else, check the characters in turn
             cpy #TOOL_COUNT     ; ,,
             bne loop            ; ,,
-            jsr DirectMode      ; In a BASIC program, respond to illegal
-            beq cmd_err         ;   commands with SYNTAX ERROR
-            jmp SYNTAX_ERR      ;   ,,
-cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
-            jsr CHROUT          ;   with a question mark
-            lda #LF             ;   ,,
-            jsr CHROUT          ;   ,,     
+            jsr SyntaxErr		; Mode-appropriate syntax error
 to_prompt:  jsr CHRGOT          ; Restore flags for the found character
             jmp Return          ; Show prompt (maybe) and warm start
 exit:       jsr CHRGOT          ; Restore flags for the found character
@@ -345,6 +340,17 @@ warmst:     jmp (WARM_START)    ; Warm start to BASIC
 in_program: lda #$00            ; In a program, reset the keyboard buffer size
             sta KBSIZE          ;   to 0 to avoid any prompts
             jmp NX_BASIC        ; Otherwise, continue to next BASIC command   
+
+; Mode-appropriate Syntax Error
+; In direct mode, show a question mark and return to           
+SyntaxErr:	jsr DirectMode      ; In a BASIC program, respond to illegal
+            beq cmd_err         ;   commands with SYNTAX ERROR
+            jmp SYNTAX_ERR      ;   ,,
+cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
+            jsr CHROUT          ;   with a question mark
+            lda #LF             ;   ,,
+            jsr CHROUT          ;   ,,
+            jmp Return
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; COMMON LIST COMPONENT
@@ -1075,7 +1081,7 @@ Tester:     bcs get_bytes       ; If there's an address supplied, get more bytes
             jsr ResetIn         ; Otherwise, see if only a single byte was
             jsr HexGet          ;   provided for Quick Peek address
             bcs low_peek        ; If so, handle low-byte peek
-            jmp SYNTAX_ERR      ; Otherwise, syntax error
+            jmp SyntaxErr
 low_peek:   sta W_ADDR          ; Treat the single address as the low byte,
             lda #0              ;   setting the high byte to 0
             sta W_ADDR+1        ;   ,,
@@ -1332,7 +1338,7 @@ MemSave:    bcc save_err        ; Bail if the address is no good
             jsr SAVE            ; ,,
             bcs FileError
             jmp Linefeed
-save_err:   jmp SYNTAX_ERR      ; To ?SYNTAX ERROR      
+save_err:   jmp SyntaxErr  
 
 ; Show System Disk Error            
 FileError:  bne show_error      ; Error in A will be $00 if a cassette save is
@@ -1414,7 +1420,7 @@ setup_err:  jmp save_err
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Search
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Search:     bcs s_addr_ok       ; Syntax error if no good address
-search_err: jmp SYNTAX_ERR      ; ,,
+search_err: jmp SyntaxErr		; ,,
 s_addr_ok:  lda INBUFFER+4      ; Or nothing to search
             beq search_err      ; ,,
             lda #SEARCH_L       ; Move search limit to countdown
@@ -1572,7 +1578,7 @@ advance:    jsr IncAddr         ; If not, advance the working address and the
             jmp loop            ;   and copy the next byte
 copy_end:   jsr IncCP           ; Advance Command Pointer
             jmp CPtoBASIC       ; Update CP variable and end  
-copy_err:   jmp SYNTAX_ERR      ; ?SYNTAX ERROR if invalid parameters
+copy_err:   jmp SyntaxErr       ; SYNTAX ERROR if invalid parameters
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; NUMERIC CONVERSION
@@ -2122,7 +2128,7 @@ adv_out:    inx                 ; Increment the output buffer index and begin
             bne next            ;   ,,
 unfound:    clc                 ; Return with carry clear if no match
             rts                 ; ,,
-derror:     jmp SYNTAX_ERR              
+derror:     jmp SyntaxErr           
 
 ; Rechain BASIC program
 Rechain:    jsr $c533           ; Re-chain BASIC program to set BASIC
@@ -2179,7 +2185,7 @@ Compare:    bcc cerror          ; Error if the first address is no good
             sta COUNT           ; ,,
             sta COUNT+1         ; ,,
             bcs Start           ; Setup OK, do compare
-cerror:     jmp $cf08           ; ?SYNTAX ERROR, warm start
+cerror:     jmp SyntaxErr
 
 ; Start comparison
 Start:      jsr StartLine       ; Start address line
@@ -2656,7 +2662,7 @@ ch_eov:     cmp #"'"            ; If the closing quote is found,
 next_vch:   iny
             cpy #4
             bne loop
-int_err:    jmp SYNTAX_ERR      ; Interpolation variable error                       
+int_err:    jmp SyntaxErr		; Interpolation variable error                      
 val_var:    lda $45             ; Validate the found variable name;
             jsr CHRTST          ;   if first character <A or >Z, then error
             bcc int_err         ;   ,,
@@ -3268,7 +3274,11 @@ InstrSet:   .byte $09,$07       ; ADC
             .byte $a6,$43       ; TYA
             .byte $98,$b0       ; * TYA implied
             .byte TABLE_END,$00 ; End of 6502 table
-Extended:   .byte $0b,$87       ; ANC
+Extended:   .byte $9a,$ef		; SKW
+			.byte $3c,$b0		; * SKW immediate (ersatz)
+			.byte $9a,$c5		; SKP
+			.byte $34,$b0		; * SKB immediate (ersatz)
+			.byte $0b,$87       ; ANC
             .byte $0b,$a0       ; * ANC immediate
             .byte $2b,$a0       ; * ANC immediate
             .byte $98,$71       ; SAX
@@ -3298,7 +3308,6 @@ Extended:   .byte $0b,$87       ; ANC
             .byte $23,$e1       ; DOP
             .byte $04,$70       ; * DOP zero page
             .byte $14,$80       ; * DOP zero page,x
-            .byte $34,$80       ; * DOP zero page,x
             .byte $44,$70       ; * DOP zero page
             .byte $54,$80       ; * DOP zero page,x
             .byte $64,$70       ; * DOP zero page
@@ -3375,7 +3384,6 @@ Extended:   .byte $0b,$87       ; ANC
             .byte $a3,$e1       ; TOP
             .byte $0c,$40       ; * TOP absolute
             .byte $1c,$50       ; * TOP absolute,x
-            .byte $3c,$50       ; * TOP absolute,x
             .byte $5c,$50       ; * TOP absolute,x
             .byte $7c,$50       ; * TOP absolute,x
             .byte $dc,$50       ; * TOP absolute,x
@@ -3554,7 +3562,7 @@ uRelocate:  jmp ph_reloc
             ; Command template
             .asc $00,".U FROM TO TARGET",$00
 ph_reloc:   bcs okay            ; Error if invalid first argument (source start)
-error:      jmp $cf08           ; ?SYNTAX ERROR, warm start
+error:      jmp SyntaxErr       ; ?SYNTAX ERROR, warm start
 okay:       jsr HexGet          ; Get high byte of source end
             bcc error           ; ,,
             sta SRC_END+1       ; ,,
@@ -3805,7 +3813,7 @@ found_end:  lda MODIFIER        ; If the code is not relocatable, skip the
             jsr AddBuffer       ; Add the output buffer to the BASIC line
             jsr mEndLine        ; Finish the first BASIC line
             jmp mStart          ; Start adding lines of 6502 code
-merror:     jmp $cf08           ; ?SYNTAX ERROR, warm start
+merror:     jmp SyntaxErr       ; ?SYNTAX ERROR, warm start
 mStart:     jsr mChRange
             bcc range_ok
 mdone:      jsr mEnd            ; Add $00,$00 to the the program
@@ -4085,7 +4093,7 @@ ph_basic:   jsr ResetIn         ; Route to utility
             cmp #"R"            ; ,, Renumber utility
             bne basic_err       ; ,,
             jmp Renum           ; ,,
-basic_err:  jmp SYNTAX_ERR      ; ,,
+basic_err:  jmp SyntaxErr
 
 ; Old
 ; Restore a NEWed program
@@ -4220,7 +4228,7 @@ ph_conf:    jsr ResetIn         ; Get the character after the command
             beq expfound        ; ,,
             dey                 ; ,,
             bpl loop            ; ,,
-            jmp SYNTAX_ERR      ; No valid character was found
+            jmp SyntaxErr		; No valid character was found
 expfound:   lda MemLo,y         ; A valid character was found, indicating a
             sta $0282           ;   memory configuration. So look up the values
             lda MemHi,y         ;   in the table, including mem low and high
