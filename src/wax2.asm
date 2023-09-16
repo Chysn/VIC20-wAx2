@@ -652,7 +652,7 @@ non_qm:     bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
             jsr PETtoScr        ; Perform the conversion
 skip_conv:  sta (W_ADDR),y      ; Populate data
             iny
-            cpy #$10            ; String size limit
+            cpy #16             ; String size limit
             beq edit_exit
             jmp loop
             
@@ -3016,11 +3016,11 @@ ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
 ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
-wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc "WAXPANDER: WAX+27K",LF,LF,LF,$00
-Intro:      .asc LF," ",$dd,"BEIGEMAZE.COM/WAX2",$dd,LF
-            .asc " ",$dd,"                  ",$dd,LF
-            .asc " ",$dd,"     .?  HELP     ",$dd,LF,$00
+wAxpander:  .asc CRSRUP,CRSRUP,CRSRUP
+            .asc $dd," WAXPANDER: WAX+27K",LF,LF,LF,$00
+Intro:      .asc LF,$b0,LF,$dd," BEIGEMAZE.COM/WAX2",LF
+            .asc $dd,LF
+            .asc $dd,"      .?  HELP",LF,$ad,LF,$00
             
 Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
