@@ -231,7 +231,6 @@ jNext:      jmp Next            ; a02d
 jDirectMode:jmp DirectMode      ; a030
 jSizeOf:    jmp SizeOf          ; a033
 jDisasm:    jmp Disasm          ; a036
-jSyntaxErr: jmp SyntaxErr		; a039
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -1069,7 +1068,7 @@ is_zero:    lda #"0"
             pla
             lsr
             bne loop
-            jsr Space
+            jsr Semicolon
             pla
             jmp HexOut
 
