@@ -82,7 +82,6 @@ CHRGET      = $0073
 CHRGOT      = $0079
 PRTFIX      = $ddcd             ; Print base-10 number
 SYS         = $e12d             ; BASIC SYS start
-SYS_BRK     = $e133             ; BASIC SYS continue after BRK
 SYS_TAIL    = $e144             ; BAIC SYS end
 CHROUT      = $ffd2             ; Print one character
 WARM_START  = $0302             ; BASIC warm start vector
@@ -1121,8 +1120,12 @@ test_err:   jmp MIS_ERROR       ; ?MISMATCH ERROR on failed test
 ; GO
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Go
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Execute:    bcc iterate         ; No address was provided; continue from BRKpt
-            lda W_ADDR          ; Set the temporary INT storage to the program
+Execute:    bcs go_param        ; If address was provided, use that
+			lda SYS_DEST		; Otherwise, continue from the previous
+			sta W_ADDR			;   PC specified in the SYS destination
+			lda SYS_DEST+1		;   pointer
+			sta W_ADDR+1		;   ,,
+go_param:	lda W_ADDR          ; Set the temporary INT storage to the program
             sta SYS_DEST        ;   counter. This is what SYS uses for its
             lda W_ADDR+1        ;   execution address, and I'm using that
             sta SYS_DEST+1      ;   system to borrow saved Y,X,A,P values
@@ -1132,10 +1135,6 @@ Execute:    bcc iterate         ; No address was provided; continue from BRKpt
             pha                 ;   ,,
             jsr SetupVec        ; Make sure the BRK handler is enabled
             jmp SYS             ; Call BASIC SYS, after the parameter parsing
-iterate:    pla                 ; Remove return to Return from the stack; it
-            pla                 ;   is not needed
-            jsr SetupVec        ; Make sure the BRK handler is enabled
-            jmp SYS_BRK         ; SYS with no tail return address
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; REGISTER EDITOR
@@ -1262,7 +1261,7 @@ Break:      pla                 ; Get values from stack and put them in the
             plp                 ; Get the processor status
             jsr SYS_TAIL        ; Store regiters in SYS locations
             pla                 ; Get Program Counter from interrupt and put
-            sta SYS_DEST        ;   it in the Command Pointer
+            sta SYS_DEST        ;   it in the SYS destination
             pla                 ;   ,,
             sta SYS_DEST+1      ;   ,,
             lda #<BreakMsg      ; Print BRK indicator
@@ -2355,6 +2354,7 @@ get_name:   jsr CharGet         ; Get the next two characters after the quote
             beq cfound          ; Both match, so the menu item is found
 mnext:      dey                 ; Iterate
             bpl loop            ; ,,
+            jmp SyntaxErr		; Syntax error if plug-in not found
 ShowMenu:   jsr PlugType        ; Show the type of plug-in for the user's
             bmi list_plug       ;   convenience
             lda #<NormalTxt     ;   ,,
@@ -2390,8 +2390,8 @@ cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
             sta USER_VECT       ;   looked up address
             lda MenuLoc_H,y     ;   ,,
             sta USER_VECT+1     ;   ,,
--loop:      ldx #0              ; Get character at screen position
-            lda ($d1,x)         ; ,,
+      		ldx #0              ; Get character at screen position
+-loop:      lda ($d1,x)         ; ,,
             cmp #WEDGE          ; Is it a . character?
             bne desc_r          ; If not, done positioning cursor
             lda #$11            ; Drop down one line
