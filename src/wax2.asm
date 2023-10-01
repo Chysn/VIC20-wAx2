@@ -2874,7 +2874,7 @@ print_done: lda #RVS_OFF        ; Reverse off after each line
 -loop:      cpy #22				;   cursors up to execute a tool,
             bcs Linefeed		;   the data sent to the screen remains
             jsr CHROUT			;   clean.
-            INY					;   ,,
+            iny					;   ,,
             bne loop			;   ,,
 
 Linefeed:   lda #LF
