@@ -2659,7 +2659,7 @@ ch_eov:     cmp #"'"            ; If the closing quote is found,
             beq val_var         ;   then find the variable
             sta $45,y           ; Store next variable name character
 next_vch:   iny
-            cpy #4
+            cpy #3
             bne loop
 int_err:    jmp SyntaxErr		; Interpolation variable error                      
 val_var:    lda $45             ; Validate the found variable name;
@@ -2706,8 +2706,8 @@ int_low:    lda $14
             jsr CopyOp
             jmp Transcribe
             
-is_string:  lda #QUOTE          ; This is a string variable, so add quote to
-            jsr AddInput        ;   the input buffer
+is_string:  ;lda #QUOTE          ; This is a string variable, so add quote to
+            ;jsr AddInput        ;   the input buffer
             ldx #0              ; Get the string size here
             lda ($47,x)         ; ,,
             beq int_err         ; Error if it's not set
@@ -2730,8 +2730,8 @@ str_sz_ok:  sta CHARAC          ; Store the string size for comparison
             iny                 ; Increment the counter
             cpy CHARAC          ; For wAx, strings need to max out at 16
             bne loop            ; ,,
-str_done:   lda #QUOTE          ; Close the quote
-            jsr AddInput        ; ,,
+str_done:   ;lda #QUOTE          ; Close the quote
+            ;jsr AddInput        ; ,,
             jmp Transcribe
                         
 ; Expand External Program Counter
@@ -2760,9 +2760,9 @@ post_mx:    jsr CHRGET          ; Get character from input buffer
             jmp ExpandCP        ;   ,,
 ch_interp:  cmp #"'"            ; Replace a variable name with a hex value
             bne ch_comment      ; ,,
-            ldy $83             ;   (If currently in quote mode, just add the
-            cpy #$06            ;     apostrophe without interpolating
-            beq x_add           ;     a variable)
+            ;ldy $83             ;   (If currently in quote mode, just add the
+            ;cpy #$06            ;     apostrophe without interpolating
+            ;beq x_add           ;     a variable)
             jmp InterpVar       ; ,,
 ch_comment: cmp #";"            ; If it's a comment, then quit transcribing
             beq comment         ;   unless we're in quote mode
