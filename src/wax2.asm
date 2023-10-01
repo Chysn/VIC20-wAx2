@@ -45,10 +45,11 @@ MAX_FWD     = 12                ; Maximum number of forward references
 PLUGINS     = 7                 ; Number of included plug-ins
 
 ; Tool Setup
-TOOL_COUNT  = $1b               ; How many tools are there?
+TOOL_COUNT  = 28                ; How many tools are there?
 WEDGE       = "."               ; The wedge character
 T_DIS       = "D"               ; Tool character D for disassembly
 T_XDI       = "E"               ; Tool character E for extended opcodes
+T_FOL		= "V"				; Tool character V for follow disassembly
 T_ASM       = "A"               ; Tool character A for assembly
 T_ASM_AL    = ","               ;   Alias for assembly
 T_MEM       = "M"               ; Tool character M for memory dump
@@ -452,6 +453,26 @@ list_stop:  lda #WEDGE          ; Provide a tool for the next page in the key-
             sta KBSIZE          ;   ,,
             jsr Addr2CP         ; Update Command Pointer with working addr
 list_r:     jmp EnableBP        ; Re-enable breakpoint, if necessary
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
+; FOLLOW
+; https://github.com/Chysn/VIC20-wAx2/wiki/Follow
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Follow
+; Disassemble a single instruction at the working address
+Follow:		bcs foll_ok
+			jmp SyntaxErr
+foll_ok:	ldy #1
+			lda (W_ADDR),y 
+			pha
+			iny
+			lda (W_ADDR),y
+			sta W_ADDR+1
+			pla
+			sta W_ADDR 
+			lda #T_DIS
+			sta TOOL_CHR
+			jmp List
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; DISASSEMBLER
@@ -1747,7 +1768,7 @@ SymbolList: ldx #$00
             lda SYMBOL_AH,y     ; ,,
             sta W_ADDR+1        ; ,,
             lda W_ADDR          ; If this symbol is undefined (meaning, it is
-            bne show_sym        ;   $0000, then skip it)
+            bne show_sym        ;   $0000), then skip it
             lda W_ADDR+1        ;   ,,
             beq undefd          ; Undefined, but it might be a forward reference
 show_sym:   jsr SymListCo       ; Add elements common to both listed item
@@ -2869,7 +2890,13 @@ PrintBuff:  lda #$00
             jsr PrintStr
 print_done: lda #RVS_OFF        ; Reverse off after each line
             jsr CHROUT          ; ,,
-            ; Fall through to Linefeed
+            lda #" "
+            ldy IDX_OUT
+-loop:      cpy #22
+            bcs Linefeed
+            jsr CHROUT
+            iny 
+            bne loop
 
 Linefeed:   lda #LF
             jmp CHROUT             
@@ -2975,18 +3002,18 @@ pi:         lda #$5E
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; ToolTable contains the list of tools and addresses for each tool
 ToolTable:  .byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
-            .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR
+            .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR,T_FOL
             .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,SIGIL,$96
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
-            .byte <SetCP-1,<BASICStage-1,<PlugIn-1
+            .byte <SetCP-1,<BASICStage-1,<PlugIn-1,<Follow-1
             .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
             .byte <Help-1,<PlugMenu-1,<Symbols-1,<DEF-1
 ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
-            .byte >SetCP-1,>BASICStage-1,>PlugIn-1
+            .byte >SetCP-1,>BASICStage-1,>PlugIn-1,>Follow-1
             .byte >Assemble-1,>Register-1,>Directory-1,>List-1,>Compare-1
             .byte >Help-1,>PlugMenu-1,>Symbols-1,>DEF-1
 
@@ -3019,7 +3046,7 @@ wAxpander:  .asc CRSRUP,CRSRUP,CRSRUP
             .asc $dd," WAXPANDER: WAX+27K",LF,LF,LF,$00
 Intro:      .asc LF,$b0,LF,$dd," BEIGEMAZE.COM/WAX2",LF
             .asc $dd,LF
-            .asc $dd,"      .?  HELP",LF,$ad,LF,$00
+            .asc $dd," .? HELP",LF,$ad,LF,$00
             
 Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
@@ -3028,17 +3055,17 @@ BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF
             .asc "D 6502 DIS",$dd,"A ASSEMBLE",LF
             .asc "E 6502+EXT",$dd,"G GO",LF
-            .asc "M MEMORY  ",$dd,"R REGISTER",LF
-            .asc "I TEXT    ",$dd,"B BRKPOINT",LF
-            .asc "% BINARY  ",$dd,"@ SYMBOLS",LF
-            .asc "C COMPARE ",$dd,"* SET CP",LF,$00
-HelpScr2:   .asc "H SEARCH  ",$dd,"T TRANSFER",LF
-            .asc "L LOAD    ",$dd,$5e," STAGE",LF 
-            .asc "S SAVE    ",$dd,"= TEST",LF
-            .asc "F FILES   ",$dd,LF
-            .asc "$ HEX2DEC ",171,192,"PLUG-IN",192,192,LF
-            .asc "# DEC2HEX ",$dd,"U INVOKE",LF
-            .asc "X EXIT    ",$dd,"P INSTALL",LF,$00
+            .asc "V FOLLOW  ",$dd,"R REGISTER",LF
+            .asc "M MEMORY  ",$dd,"B BRKPOINT",LF
+            .asc "I TEXT    ",$dd,"@ SYMBOLS",LF
+            .asc "% BINARY  ",$dd,"* SET CP",LF,$00
+HelpScr2:   .asc "C COMPARE ",$dd,"T TRANSFER",LF
+            .asc "H SEARCH  ",$dd,$5e," STAGE",LF 
+            .asc "L LOAD    ",$dd,"= TEST",LF
+            .asc "S SAVE    ",$dd,"X EXIT",LF
+            .asc "F FILES   ",171,192,"PLUG-IN",192,192,LF
+            .asc "$ HEX2DEC ",$dd,"U INVOKE",LF
+            .asc "# DEC2HEX ",$dd,"P INSTALL",LF,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
