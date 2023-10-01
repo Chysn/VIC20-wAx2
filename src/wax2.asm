@@ -463,6 +463,10 @@ list_r:     jmp EnableBP        ; Re-enable breakpoint, if necessary
 Follow:		bcs foll_ok
 			jmp SyntaxErr
 foll_ok:	ldy #1
+			lda W_ADDR+1
+			pha
+			lda W_ADDR
+			pha		
 			lda (W_ADDR),y 
 			pha
 			iny
@@ -472,7 +476,12 @@ foll_ok:	ldy #1
 			sta W_ADDR 
 			lda #T_DIS
 			sta TOOL_CHR
-			jmp List
+			jsr List
+			pla
+			sta C_PT
+			pla
+			sta C_PT+1
+			rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; DISASSEMBLER
@@ -3043,10 +3052,10 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRUP
-            .asc $dd," WAXPANDER: WAX+27K",LF,LF,LF,$00
-Intro:      .asc LF,$b0,LF,$dd," BEIGEMAZE.COM/WAX2",LF
+            .asc $dd,"WAXPANDER: WAX+27K",LF,LF,LF,$00
+Intro:      .asc LF,$b0,LF,$dd,"BEIGEMAZE.COM/WAX2",LF
             .asc $dd,LF
-            .asc $dd," .? HELP",LF,$ad,LF,$00
+            .asc $dd,".? HELP",LF,$ad,LF,$00
             
 Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
@@ -3055,17 +3064,17 @@ BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF
             .asc "D 6502 DIS",$dd,"A ASSEMBLE",LF
             .asc "E 6502+EXT",$dd,"G GO",LF
-            .asc "V FOLLOW  ",$dd,"R REGISTER",LF
-            .asc "M MEMORY  ",$dd,"B BRKPOINT",LF
-            .asc "I TEXT    ",$dd,"@ SYMBOLS",LF
-            .asc "% BINARY  ",$dd,"* SET CP",LF,$00
-HelpScr2:   .asc "C COMPARE ",$dd,"T TRANSFER",LF
-            .asc "H SEARCH  ",$dd,$5e," STAGE",LF 
-            .asc "L LOAD    ",$dd,"= TEST",LF
-            .asc "S SAVE    ",$dd,"X EXIT",LF
-            .asc "F FILES   ",171,192,"PLUG-IN",192,192,LF
-            .asc "$ HEX2DEC ",$dd,"U INVOKE",LF
-            .asc "# DEC2HEX ",$dd,"P INSTALL",LF,$00
+            .asc "M MEMORY  ",$dd,"R REGISTER",LF
+            .asc "I TEXT    ",$dd,"B BRKPT",LF
+            .asc "% BINARY  ",$dd,"@ SYMBOL",LF
+            .asc "C COMPARE ",$dd,"* SET CP",LF,$00
+HelpScr2:   .asc "H SEARCH  ",$dd,"T TRANSFER",LF
+            .asc "L LOAD    ",$dd,$5e," STAGE",LF 
+            .asc "S SAVE    ",$dd,"= TEST",LF
+            .asc "F FILES   ",$dd,LF
+            .asc "$ HEX2DEC ",171,192,"PLUG-IN",192,192,LF
+            .asc "# DEC2HEX ",$dd,"U INVOKE",LF
+            .asc "X EXIT    ",$dd,"P INSTALL",LF,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
