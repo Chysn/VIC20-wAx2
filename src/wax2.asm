@@ -2869,7 +2869,13 @@ PrintBuff:  lda #$00
             jsr PrintStr
 print_done: lda #RVS_OFF        ; Reverse off after each line
             jsr CHROUT          ; ,,
-            ; Fall through to Linefeed
+            lda #" "			; Pad (most of) the remainder of the line
+            ldy IDX_OUT			;   with spaces, so that if the user
+-loop:      cpy #22				;   cursors up to execute a tool,
+            bcs Linefeed		;   the data sent to the screen remains
+            jsr CHROUT			;   clean.
+            INY					;   ,,
+            bne loop			;   ,,
 
 Linefeed:   lda #LF
             jmp CHROUT             
