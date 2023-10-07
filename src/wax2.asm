@@ -81,8 +81,8 @@ GONE        = $c7e4
 CHRGET      = $0073
 CHRGOT      = $0079
 PRTFIX      = $ddcd             ; Print base-10 number
-SYS         = $e12d             ; BASIC SYS start
-SYS_TAIL    = $e144             ; BAIC SYS end
+SYS_REG		= $e133				; BASIC SYS start - restore regs
+SYS_TAIL    = $e144             ; BASIC SYS end - save regs
 CHROUT      = $ffd2             ; Print one character
 WARM_START  = $0302             ; BASIC warm start vector
 READY       = $c002             ; BASIC warm start with READY.
@@ -112,6 +112,7 @@ MAKFP       = $d391             ; 2-byte integer to FAC1
 SGNFAC      = $dc2b             ; Sign of FAC1 (A=$ff if negative)
 LAPLUS      = $d867             ; Add FAC2 to FAC1
 CHRTST      = $d113             ; Check character between A and Z
+PLOT        = $fff0             ; Get or set cursor position
 
 ; System resources - Vectors and Pointers
 IGONE       = $0308             ; Vector to GONE
@@ -283,7 +284,7 @@ Main:       jsr CHRGET          ; Get the character from input or BASIC
             iny                 ; Else, check the characters in turn
             cpy #TOOL_COUNT     ; ,,
             bne loop            ; ,,
-            jsr SyntaxErr		; Mode-appropriate syntax error
+            jsr SyntaxErr       ; Mode-appropriate syntax error
 to_prompt:  jsr CHRGOT          ; Restore flags for the found character
             jmp Return          ; Show prompt (maybe) and warm start
 exit:       jsr CHRGOT          ; Restore flags for the found character
@@ -341,7 +342,7 @@ in_program: lda #$00            ; In a program, reset the keyboard buffer size
 
 ; Mode-appropriate Syntax Error
 ; In direct mode, show a question mark and return to           
-SyntaxErr:	jsr DirectMode      ; In a BASIC program, respond to illegal
+SyntaxErr:  jsr DirectMode      ; In a BASIC program, respond to illegal
             beq cmd_err         ;   commands with SYNTAX ERROR
             jmp SYNTAX_ERR      ;   ,,
 cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
@@ -1121,46 +1122,35 @@ test_err:   jmp MIS_ERROR       ; ?MISMATCH ERROR on failed test
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Go
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Execute:    bcs go_param        ; If address was provided, use that
-			lda SYS_DEST		; Otherwise, continue from the previous
-			sta W_ADDR			;   PC specified in the SYS destination
-			lda SYS_DEST+1		;   pointer
-			sta W_ADDR+1		;   ,,
-go_param:	lda W_ADDR          ; Set the temporary INT storage to the program
+            lda SYS_DEST        ; Otherwise, continue from the previous
+            sta W_ADDR          ;   PC specified in the SYS destination
+            lda SYS_DEST+1      ;   pointer
+            sta W_ADDR+1        ;   ,,
+            pla
+            pla
+            jmp SYS_REG
+go_param:   lda W_ADDR          ; Set the temporary INT storage to the program
             sta SYS_DEST        ;   counter. This is what SYS uses for its
             lda W_ADDR+1        ;   execution address, and I'm using that
             sta SYS_DEST+1      ;   system to borrow saved Y,X,A,P values
-            lda #>RegDisp-1     ; Add the register display return address to
-            pha                 ;   the stack, as the return point after the
-            lda #<RegDisp-1     ;   SYS tail
-            pha                 ;   ,,
             jsr SetupVec        ; Make sure the BRK handler is enabled
-            jmp SYS             ; Call BASIC SYS, after the parameter parsing
+            jsr SYS_REG         ; Call BASIC SYS, after the parameter parsing
+            jsr SYS_TAIL		; Save registers after return
+            ; Fall through to register display
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; REGISTER EDITOR
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Register-Editor
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Register:   jsr ResetIn
-            jsr HexGet   
-            bcc RegDisp
-            sta ACC
-            jsr HexGet   
-            bcc register_r
-            sta XREG
-            jsr HexGet   
-            bcc register_r
-            sta YREG
-            jsr HexGet   
-            bcc register_r
-            sta PROC
-register_r: rts
-
 ; Register Display            
 RegDisp:    cld                 ; Escape hatch for accidentally-set Decimal flag
+            ;Register display header
             lda #<Registers     ; Print register display bar
             ldy #>Registers     ; ,,
             jsr PrintStr        ; ,,
             jsr ResetOut        ; ,,
+            
+            ; Status flag display
             ldy #$07            ; Print processor flag statuses
             lda #$80            ; Bit value of flag (from bit 7 to 0)
 -loop:      pha                 ; ,,
@@ -1177,6 +1167,8 @@ pfoff:      lda #RVS_OFF        ; Reverse off = flag is off
             dey                 ; Decrement the flag index
             bpl loop            ; If there's another flag, go back for it
             jsr PrintBuff       ; Otherwise, flush the status flags to display
+            
+            ; Show register values (A, X, Y, P), stack pointer, and PC
             jsr ResetOut        ; Reset output for register value line
             jsr wAxPrompt       ; ,,
             jsr Semicolon       ; ,,
@@ -1196,6 +1188,22 @@ pfoff:      lda #RVS_OFF        ; Reverse off = flag is off
             lda SYS_DEST        ; Print low byte of SYS destination
             jsr HexOut          ; ,,
             jmp PrintBuff       ; Print the buffer
+            
+; Set register values            
+Register:   jsr ResetIn
+            jsr HexGet   
+            bcc RegDisp
+            sta ACC
+            jsr HexGet   
+            bcc register_r
+            sta XREG
+            jsr HexGet   
+            bcc register_r
+            sta YREG
+            jsr HexGet   
+            bcc register_r
+            sta PROC
+register_r: rts
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; BREAKPOINT MANAGER
@@ -1418,7 +1426,7 @@ setup_err:  jmp save_err
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Search
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Search:     bcs s_addr_ok       ; Syntax error if no good address
-search_err: jmp SyntaxErr		; ,,
+search_err: jmp SyntaxErr       ; ,,
 s_addr_ok:  lda INBUFFER+4      ; Or nothing to search
             beq search_err      ; ,,
             lda #SEARCH_L       ; Move search limit to countdown
@@ -2354,7 +2362,7 @@ get_name:   jsr CharGet         ; Get the next two characters after the quote
             beq cfound          ; Both match, so the menu item is found
 mnext:      dey                 ; Iterate
             bpl loop            ; ,,
-            jmp SyntaxErr		; Syntax error if plug-in not found
+            jmp SyntaxErr       ; Syntax error if plug-in not found
 ShowMenu:   jsr PlugType        ; Show the type of plug-in for the user's
             bmi list_plug       ;   convenience
             lda #<NormalTxt     ;   ,,
@@ -2390,7 +2398,7 @@ cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
             sta USER_VECT       ;   looked up address
             lda MenuLoc_H,y     ;   ,,
             sta USER_VECT+1     ;   ,,
-      		ldx #0              ; Get character at screen position
+            ldx #0              ; Get character at screen position
 -loop:      lda ($d1,x)         ; ,,
             cmp #WEDGE          ; Is it a . character?
             bne desc_r          ; If not, done positioning cursor
@@ -2497,7 +2505,9 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
 
 ; Buffer to Byte
 ; Get two characters from the buffer and evaluate them as a hex byte
-HexGet   :  jsr CharGet
+HexGet:     jsr CharGet
+            cmp #QUOTE
+            beq HexGet
             jsr Char2Nyb
             bcc hexget_r        ; Return with Carry clear if invalid
             asl                 ; Multiply high nybble by 16
@@ -2661,7 +2671,7 @@ ch_eov:     cmp #"'"            ; If the closing quote is found,
 next_vch:   iny
             cpy #4
             bne loop
-int_err:    jmp SyntaxErr		; Interpolation variable error                      
+int_err:    jmp SyntaxErr       ; Interpolation variable error                      
 val_var:    lda $45             ; Validate the found variable name;
             jsr CHRTST          ;   if first character <A or >Z, then error
             bcc int_err         ;   ,,
@@ -2730,11 +2740,11 @@ str_sz_ok:  sta CHARAC          ; Store the string size for comparison
             iny                 ; Increment the counter
             cpy CHARAC          ; For wAx, strings need to max out at 16
             bne loop            ; ,,
-str_done:   lda #QUOTE          ; Close the quote
-            jsr AddInput        ; ,,
+str_done:   lda #QUOTE          ; Add the ending quote, which is needed
+            jsr AddInput        ;   to represent the string accurately
             jmp Transcribe
                         
-; Expand External Program Counter
+; Expand Command Pointer
 ; Replace asterisk with the C_PT
 ExpandCP:   jsr ResetOut
             jsr ShowCP
@@ -2869,13 +2879,14 @@ PrintBuff:  lda #$00
             jsr PrintStr
 print_done: lda #RVS_OFF        ; Reverse off after each line
             jsr CHROUT          ; ,,
-            lda #" "			; Pad (most of) the remainder of the line
-            ldy IDX_OUT			;   with spaces, so that if the user
--loop:      cpy #22				;   cursors up to execute a tool,
-            bcs Linefeed		;   the data sent to the screen remains
-            jsr CHROUT			;   clean.
-            iny					;   ,,
-            bne loop			;   ,,
+            sec                 ; Get current cursor column to pad (most of)
+            jsr PLOT            ;   the remainder of the line with spaces,
+            lda #" "            ;   so that if the user cursors up to
+-loop:      cpy #21             ;   execute a tool, the data send to the
+            bcs Linefeed        ;   screen remains clean
+            jsr CHROUT          ;   ,,
+            iny                 ;   ,,
+            bne loop            ;   ,,
 
 Linefeed:   lda #LF
             jmp CHROUT             
@@ -3279,11 +3290,11 @@ InstrSet:   .byte $09,$07       ; ADC
             .byte $a6,$43       ; TYA
             .byte $98,$b0       ; * TYA implied
             .byte TABLE_END,$00 ; End of 6502 table
-Extended:   .byte $9a,$ef		; SKW
-			.byte $3c,$b0		; * SKW immediate (ersatz)
-			.byte $9a,$c5		; SKP
-			.byte $34,$b0		; * SKB immediate (ersatz)
-			.byte $0b,$87       ; ANC
+Extended:   .byte $9a,$ef       ; SKW
+            .byte $3c,$b0       ; * SKW immediate (ersatz)
+            .byte $9a,$c5       ; SKP
+            .byte $34,$b0       ; * SKB immediate (ersatz)
+            .byte $0b,$87       ; ANC
             .byte $0b,$a0       ; * ANC immediate
             .byte $2b,$a0       ; * ANC immediate
             .byte $98,$71       ; SAX
@@ -3502,8 +3513,8 @@ comp_r:     jmp (READY)
 ; Show Progress Header
 Progress:   jsr ResetOut        ; Show final locations...
             jsr AddrPrefix      ; Show address prefix
-            jsr ShowCP          ;    Starting address        
-            jsr Space           ;      to
+            jsr ShowCP          ;   Starting address        
+            jsr Space           ;     to
             jsr ShowAddr        ;   end address
             jmp PrintBuff       ;   ,,            
   
@@ -4233,7 +4244,7 @@ ph_conf:    jsr ResetIn         ; Get the character after the command
             beq expfound        ; ,,
             dey                 ; ,,
             bpl loop            ; ,,
-            jmp SyntaxErr		; No valid character was found
+            jmp SyntaxErr       ; No valid character was found
 expfound:   lda MemLo,y         ; A valid character was found, indicating a
             sta $0282           ;   memory configuration. So look up the values
             lda MemHi,y         ;   in the table, including mem low and high
