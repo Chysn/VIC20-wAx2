@@ -6,6 +6,7 @@
 ;                  
 ; Release 1  - May 16, 2020
 ; wAx2       - January 23, 2022
+; wAx2.1     - October 7, 2023
 ; Assembled with XA
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -235,8 +236,8 @@ jDisasm:    jmp Disasm          ; a036
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-Install:    lda #<Intro         ; Print introduction message
-            ldy #>Intro         ; ,,
+Install:    lda #<Banner        ; Print introduction message
+            ldy #>Banner        ; ,,
             jsr PrintStr        ; ,,
             jsr has_exp         ; Determine whether to introduce this software
             beq nonwAxpand      ;   as wAxpander, based on RAM in Block 3
@@ -1189,20 +1190,31 @@ pfoff:      lda #RVS_OFF        ; Reverse off = flag is off
             jsr HexOut          ; ,,
             jmp PrintBuff       ; Print the buffer
             
-; Set register values            
-Register:   jsr ResetIn
-            jsr HexGet   
-            bcc RegDisp
-            sta ACC
-            jsr HexGet   
-            bcc register_r
-            sta XREG
-            jsr HexGet   
-            bcc register_r
-            sta YREG
-            jsr HexGet   
-            bcc register_r
-            sta PROC
+; Set register values    
+; You can keep a register the same by entering a hyphen in its place        
+Register:   jsr ResetIn			; Reset in because allowing a single byte
+			jsr CharGet			; If alone on the line, show register display
+			beq RegDisp 		; ,,
+            jsr HexGet+3   		; Get A. +3 because CharGet has been done!
+            bcc ch_x			; If no A, check X
+            sta ACC				; Store A in SYS A
+ch_x:       jsr HexGet   		; Get X
+            bcc ch_y			; If no X, check for Y
+            sta XREG			; Store X in SYS X
+ch_y:       jsr HexGet   		; Get Y
+            bcc ch_proc			; If no Y, check for Processor Status
+            sta YREG			; Store Y in SYS Y
+ch_proc:    jsr HexGet   		; Get Processor Status
+            bcc ch_sp			; If no Processor Status, check for Stack Ptr
+            sta PROC			; Store Status in SYS Status
+ch_sp:		jsr HexGet			; Stack pointer byte is pulled, but is not
+			bcc ch_addr			;   observed, because it messes stuff up
+ch_addr:	jsr HexGet			; Get and set SYS PC
+			bcc register_r		; ,,
+			sta SYS_DEST+1		; ,,
+			jsr HexGet			; ,,
+			bcc register_r		; ,,
+			sta SYS_DEST
 register_r: rts
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -2463,7 +2475,8 @@ adv_lang_r: ldy #$00            ; When an instruction is found, set A to its
             rts
             
 ; Get Character
-; Akin to CHRGET, but scans the INBUFFER, which has already been detokenized            
+; Akin to CHRGET, but scans the INBUFFER, which has already been detokenized
+; Zero flag is set if there's no character available           
 CharGet:    ldx IDX_IN
             lda INBUFFER,x
             php
@@ -2506,9 +2519,14 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
 ; Buffer to Byte
 ; Get two characters from the buffer and evaluate them as a hex byte
 HexGet:     jsr CharGet
-            cmp #QUOTE
-            beq HexGet
-            jsr Char2Nyb
+            cmp #QUOTE			; Ignore quotation marks in hex, to allow
+            beq HexGet			;   string interpolation of hex in commands
+            cmp #"-"			; Skip two characters if the first is a
+            bne nyb 			;   hyphen (see Register for why)
+            jsr CharGet			;   ,,
+            clc					;   ,,
+            rts					;   ,,
+nyb:        jsr Char2Nyb		; Is this valid hex [0-9A-F]?
             bcc hexget_r        ; Return with Carry clear if invalid
             asl                 ; Multiply high nybble by 16
             asl                 ;   ,,
@@ -3010,11 +3028,11 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
 ; Plug-In Menu Data           
 MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CHtxt,<BAtxt,<WAtxt
 MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CHtxt,>BAtxt,>WAtxt
-MEtxt:      .asc LF,".P ",QUOTE,"MEM CONFIG",QUOTE,$00
-REtxt:      .asc LF,".P ",QUOTE,"RELOCATE",QUOTE,$00
+MEtxt:      .asc LF,".P ",QUOTE,"MEM CONF",QUOTE,$00
+REtxt:      .asc LF,".P ",QUOTE,"RELOC",QUOTE,$00
 DEtxt:      .asc LF,".P ",QUOTE,"DEBUG",QUOTE,$00
-MLtxt:      .asc LF,".P ",QUOTE,"ML TO BASIC",QUOTE,$00
-CHtxt:      .asc LF,".P ",QUOTE,"CHAR HELPER",QUOTE,$00
+MLtxt:      .asc LF,".P ",QUOTE,"ML2BASIC",QUOTE,$00
+CHtxt:      .asc LF,".P ",QUOTE,"CHAR HELP",QUOTE,$00
 BAtxt:      .asc LF,".P ",QUOTE,"BASIC AID",QUOTE,$00
 WAtxt:      .asc LF,".P ",QUOTE,"WAXFER",QUOTE,LF,$00
 NormalTxt:  .asc " NORMAL $",$00
@@ -3032,11 +3050,13 @@ ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
 ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
-wAxpander:  .asc CRSRUP,CRSRUP,CRSRUP
-            .asc $dd," WAXPANDER: WAX+27K",LF,LF,LF,$00
-Intro:      .asc LF,$b0,LF,$dd," BEIGEMAZE.COM/WAX2",LF
-            .asc $dd,LF
-            .asc $dd,"      .?  HELP",LF,$ad,LF,$00
+wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
+Banner:     .asc LF,$b0,LF
+			.asc $dd," BEIGEMAZE.COM/WAX2",LF
+			.asc $dd,LF
+			.asc $dd," V2.1       .? HELP",LF
+            .asc $ad,LF,$00
             
 Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
@@ -4098,7 +4118,7 @@ CONSEC_0S   = $024c             ; Consecutive zeroes
 uBASIC:     jmp ph_basic
             ; Command templates
             .asc $00,".U R [L# [INC]]",$0d
-            .asc ".U L STAGE [S2..]",$0d
+            .asc ".U L S1 [S2..]",$0d
             .asc ".U O",$00
 ph_basic:   jsr ResetIn         ; Route to utility
             jsr CharGet         ; ,,
