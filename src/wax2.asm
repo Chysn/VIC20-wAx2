@@ -58,7 +58,7 @@ T_TST       = $b2               ; Tool character = for tester
 T_BRK       = "B"               ; Tool character B for breakpoint
 T_REG       = "R"               ; Tool character R for register set
 T_REG_AL    = ";"               ;   Alias for register set
-T_EXE       = "G"               ; Tool character G for code execute
+T_EXE       = "G"               ; Tool character G for go
 T_SAV       = "S"               ; Tool character S for save
 T_LOA       = "L"               ; Tool character L for load
 T_FIL       = "F"               ; Tool character F for file search
@@ -82,7 +82,7 @@ GONE        = $c7e4
 CHRGET      = $0073
 CHRGOT      = $0079
 PRTFIX      = $ddcd             ; Print base-10 number
-SYS_REG		= $e133				; BASIC SYS start - restore regs
+SYS_REG     = $e133             ; BASIC SYS start - restore regs
 SYS_TAIL    = $e144             ; BASIC SYS end - save regs
 CHROUT      = $ffd2             ; Print one character
 WARM_START  = $0302             ; BASIC warm start vector
@@ -1127,8 +1127,8 @@ Go:         bcs go_param        ; If address was provided, use that
             sta W_ADDR          ;   PC specified in the SYS destination
             lda SYS_DEST+1      ;   pointer
             sta W_ADDR+1        ;   ,,
-            pla					; Pull return address to Return, to restore
-            pla					;   stack to pre-BRK state
+            pla                 ; Pull return address to Return, to restore
+            pla                 ;   stack to pre-BRK state
             jmp SYS_REG
 go_param:   lda W_ADDR          ; Set the temporary INT storage to the program
             sta SYS_DEST        ;   counter. This is what SYS uses for its
@@ -1136,7 +1136,7 @@ go_param:   lda W_ADDR          ; Set the temporary INT storage to the program
             sta SYS_DEST+1      ;   system to borrow saved Y,X,A,P values
             jsr SetupVec        ; Make sure the BRK handler is enabled
             jsr SYS_REG         ; Call BASIC SYS, after the parameter parsing
-            jsr SYS_TAIL		; Save registers after return
+            jsr SYS_TAIL        ; Save registers after return
             ; Fall through to register display
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -1192,29 +1192,29 @@ pfoff:      lda #RVS_OFF        ; Reverse off = flag is off
             
 ; Set register values    
 ; You can keep a register the same by entering a hyphen in its place        
-Register:   jsr ResetIn			; Reset in because allowing a single byte
-			jsr CharGet			; If alone on the line, show register display
-			beq RegDisp 		; ,,
-            jsr HexGet+3   		; Get A. +3 because CharGet has been done!
-            bcc ch_x			; If no A, check X
-            sta ACC				; Store A in SYS A
-ch_x:       jsr HexGet   		; Get X
-            bcc ch_y			; If no X, check for Y
-            sta XREG			; Store X in SYS X
-ch_y:       jsr HexGet   		; Get Y
-            bcc ch_proc			; If no Y, check for Processor Status
-            sta YREG			; Store Y in SYS Y
-ch_proc:    jsr HexGet   		; Get Processor Status
-            bcc ch_sp			; If no Processor Status, check for Stack Ptr
-            sta PROC			; Store Status in SYS Status
-ch_sp:		jsr HexGet			; Stack pointer byte is pulled, but is not
-			bcc ch_addr			;   observed, because it messes stuff up
-ch_addr:	jsr HexGet			; Get and set SYS PC
-			bcc register_r		; ,,
-			sta SYS_DEST+1		; ,,
-			jsr HexGet			; ,,
-			bcc register_r		; ,,
-			sta SYS_DEST
+Register:   jsr ResetIn         ; Reset in because allowing a single byte
+            jsr CharGet         ; If alone on the line, show register display
+            beq RegDisp         ; ,,
+            jsr HexGet+3        ; Get A. +3 because CharGet has been done!
+            bcc ch_x            ; If no A, check X
+            sta ACC             ; Store A in SYS A
+ch_x:       jsr HexGet          ; Get X
+            bcc ch_y            ; If no X, check for Y
+            sta XREG            ; Store X in SYS X
+ch_y:       jsr HexGet          ; Get Y
+            bcc ch_proc         ; If no Y, check for Processor Status
+            sta YREG            ; Store Y in SYS Y
+ch_proc:    jsr HexGet          ; Get Processor Status
+            bcc ch_sp           ; If no Processor Status, check for Stack Ptr
+            sta PROC            ; Store Status in SYS Status
+ch_sp:      jsr HexGet          ; Stack pointer byte is pulled, but is not
+            bcc ch_addr         ;   observed, because it messes stuff up
+ch_addr:    jsr HexGet          ; Get and set SYS PC
+            bcc register_r      ; ,,
+            sta SYS_DEST+1      ; ,,
+            jsr HexGet          ; ,,
+            bcc register_r      ; ,,
+            sta SYS_DEST
 register_r: rts
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -2519,14 +2519,14 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
 ; Buffer to Byte
 ; Get two characters from the buffer and evaluate them as a hex byte
 HexGet:     jsr CharGet
-            cmp #QUOTE			; Ignore quotation marks in hex, to allow
-            beq HexGet			;   string interpolation of hex in commands
-            cmp #"-"			; Skip two characters if the first is a
-            bne nyb 			;   hyphen (see Register for why)
-            jsr CharGet			;   ,,
-            clc					;   ,,
-            rts					;   ,,
-nyb:        jsr Char2Nyb		; Is this valid hex [0-9A-F]?
+            cmp #QUOTE          ; Ignore quotation marks in hex, to allow
+            beq HexGet          ;   string interpolation of hex in commands
+            cmp #"-"            ; Skip two characters if the first is a
+            bne nyb             ;   hyphen (see Register for why)
+            jsr CharGet         ;   ,,
+            clc                 ;   ,,
+            rts                 ;   ,,
+nyb:        jsr Char2Nyb        ; Is this valid hex [0-9A-F]?
             bcc hexget_r        ; Return with Carry clear if invalid
             asl                 ; Multiply high nybble by 16
             asl                 ;   ,,
@@ -3053,9 +3053,9 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
             .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
 Banner:     .asc LF,$b0,LF
-			.asc $dd," BEIGEMAZE.COM/WAX2",LF
-			.asc $dd,LF
-			.asc $dd," V2.1       .? HELP",LF
+            .asc $dd," BEIGEMAZE.COM/WAX2",LF
+            .asc $dd,LF
+            .asc $dd," V2.1       .? HELP",LF
             .asc $ad,LF,$00
             
 Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
