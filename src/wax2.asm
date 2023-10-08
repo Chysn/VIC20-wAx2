@@ -3311,9 +3311,9 @@ InstrSet:   .byte $09,$07       ; ADC
             .byte $98,$b0       ; * TYA implied
             .byte TABLE_END,$00 ; End of 6502 table
 Extended:   .byte $9a,$ef       ; SKW
-            .byte $3c,$b0       ; * SKW immediate (ersatz)
+            .byte $3c,$b0       ; * SKW implied (ersatz)
             .byte $9a,$c5       ; SKP
-            .byte $34,$b0       ; * SKB immediate (ersatz)
+            .byte $34,$b0       ; * SKB implied (ersatz)
             .byte $0b,$87       ; ANC
             .byte $0b,$a0       ; * ANC immediate
             .byte $2b,$a0       ; * ANC immediate
