@@ -1122,13 +1122,13 @@ test_err:   jmp MIS_ERROR       ; ?MISMATCH ERROR on failed test
 ; GO
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Go
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Execute:    bcs go_param        ; If address was provided, use that
+Go:         bcs go_param        ; If address was provided, use that
             lda SYS_DEST        ; Otherwise, continue from the previous
             sta W_ADDR          ;   PC specified in the SYS destination
             lda SYS_DEST+1      ;   pointer
             sta W_ADDR+1        ;   ,,
-            pla
-            pla
+            pla					; Pull return address to Return, to restore
+            pla					;   stack to pre-BRK state
             jmp SYS_REG
 go_param:   lda W_ADDR          ; Set the temporary INT storage to the program
             sta SYS_DEST        ;   counter. This is what SYS uses for its
@@ -3012,13 +3012,13 @@ pi:         lda #$5E
 ToolTable:  .byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
             .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR
             .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,SIGIL,$96
-ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Execute-1
+ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Go-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
             .byte <SetCP-1,<BASICStage-1,<PlugIn-1
             .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
             .byte <Help-1,<PlugMenu-1,<Symbols-1,<DEF-1
-ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Execute-1
+ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Go-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
             .byte >SetCP-1,>BASICStage-1,>PlugIn-1
