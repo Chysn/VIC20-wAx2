@@ -154,6 +154,7 @@ RELATIVE    = $c0               ; e.g., BCC $181E
 ACCUM       = $d0               ; e.g., ROR A
 
 ; Other constants
+DEF_TOKEN   = $96               ; DEF token, in case user enters .DEFnn
 TABLE_END   = $f2               ; Indicates the end of mnemonic table
 XTABLE_END  = $d2               ; End of extended instruction table
 QUOTE       = $22               ; Quote character
@@ -361,14 +362,15 @@ cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
 ;     .DEF00
 ; DEF is tokenized by BASIC, and wAx's detokenization doesn't start until
 ; Transcribe, where other instances of DEF are detokenized. So this handles that
-DEF:        lda #T_DIS          ; Change the tool from $96 (DEF TOKEN)
+; by forcing the high byte to EF, and then grabbing the low byte
+DEF:        lda #T_DIS          ; Change the tool from $96 (DEF_TOKEN)
             sta TOOL_CHR        ;   to Disassemble
             lda #$ef            ; Set the high byte to $EF
             sta W_ADDR+1        ; ,,
             jsr ResetIn         ; Technically, the low byte of the start is the
             jsr HexGet          ;   first byte on the command line.
             sta W_ADDR          ;   ,,
-            ; Fall through to List
+            ; Fall through to List. Carry flag from HexGet maintains its meaning
 
 List:       bcc list_cont       ; If no start address, continue list at W_ADDR
             lda #$ff            ; Default range to top of memory
@@ -3011,7 +3013,7 @@ pi:         lda #$5E
 ; ToolTable contains the list of tools and addresses for each tool
 ToolTable:  .byte T_DIS,T_ASM,T_MEM,T_REG,T_EXE,T_BRK,T_TST,T_SAV,T_LOA,T_BIN
             .byte T_XDI,T_SRC,T_CPY,T_H2T,T_T2H,T_SYM,T_BAS,T_USR
-            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,SIGIL,$96
+            .byte ",",";",T_FIL,T_INT,T_COM,T_HLP,T_MEN,SIGIL,DEF_TOKEN
 ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Go-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
@@ -3310,11 +3312,18 @@ InstrSet:   .byte $09,$07       ; ADC
             .byte $a6,$43       ; TYA
             .byte $98,$b0       ; * TYA implied
             .byte TABLE_END,$00 ; End of 6502 table
-Extended:   .byte $9a,$ef       ; SKW
+            
+            ; 6502 "Illegal" instructions
+            ; with alternate names. In many cases, there's no consensus on what
+            ; the mnemonic for some instructions should be. If you have strong
+            ; feelings, the comments above the standard instruction table 
+            ; explain how a mnemonic is formatted. If there had been enough
+            ; memory left, I would have included more aliases.
+Extended:   .byte $9a,$ef       ; SKW               (see TOP)
             .byte $3c,$b0       ; * SKW implied (ersatz)
-            .byte $9a,$c5       ; SKP
+            .byte $9a,$c5       ; SKP               (see DOP)
             .byte $34,$b0       ; * SKB implied (ersatz)
-            .byte $0b,$87       ; ANC
+            .byte $0b,$87       ; ANC   
             .byte $0b,$a0       ; * ANC immediate
             .byte $2b,$a0       ; * ANC immediate
             .byte $98,$71       ; SAX
@@ -3324,16 +3333,16 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $8f,$40       ; * SAX absolute
             .byte $0c,$a5       ; ARR
             .byte $6b,$a0       ; * ARR immediate
-            .byte $0c,$e5       ; ASR
+            .byte $0c,$e5       ; ASR               (aka ALR)
             .byte $4b,$a0       ; * ASR immediate
-            .byte $66,$03       ; LXA
-            .byte $ab,$a0       ; * LXA immediate
-            .byte $9a,$03       ; SHA
+            .byte $66,$03       ; LXA               (aka ATX, OAL)
+            .byte $ab,$a0       ; * LXA immediate            
+            .byte $9a,$03       ; SHA               (aka AHX)
             .byte $9f,$60       ; * SHA absolute,y
             .byte $93,$30       ; * SHA (indirect),y
-            .byte $98,$b1       ; SBX
+            .byte $98,$b1       ; SBX               (aka AXS)
             .byte $cb,$a0       ; * SBX immediate
-            .byte $20,$e1       ; DCP
+            .byte $20,$e1       ; DCP               (aka DCM)
             .byte $c7,$70       ; * DCP zero page
             .byte $d7,$80       ; * DCP zero page,x
             .byte $cf,$40       ; * DCP absolute
@@ -3341,7 +3350,7 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $db,$60       ; * DCP absolute,y
             .byte $c3,$20       ; * DCP (indirect,x)
             .byte $d3,$30       ; * DCP (indirect),y
-            .byte $23,$e1       ; DOP
+            .byte $23,$e1       ; DOP               (aka NOP, SKB)
             .byte $04,$70       ; * DOP zero page
             .byte $14,$80       ; * DOP zero page,x
             .byte $44,$70       ; * DOP zero page
@@ -3355,7 +3364,7 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $d4,$80       ; * DOP zero page,x
             .byte $e2,$a0       ; * DOP immediate
             .byte $f4,$80       ; * DOP zero page,x
-            .byte $4c,$c5       ; ISB
+            .byte $4c,$c5       ; ISB               (aka ISC)
             .byte $e7,$70       ; * ISB zero page
             .byte $f7,$80       ; * ISB zero page,x
             .byte $ef,$40       ; * ISB absolute
@@ -3363,7 +3372,7 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $fb,$60       ; * ISB absolute,y
             .byte $e3,$20       ; * ISB (indirect,x)
             .byte $f3,$30       ; * ISB (indirect),y
-            .byte $60,$4b       ; LAE
+            .byte $60,$4b       ; LAE               (aka LAR, LAS)
             .byte $bb,$60       ; * LAE absolute,y
             .byte $60,$71       ; LAX
             .byte $a7,$70       ; * LAX zero page
@@ -3372,7 +3381,7 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $bf,$60       ; * LAX absolute,y
             .byte $a3,$20       ; * LAX (indirect,x)
             .byte $b3,$30       ; * LAX (indirect),y
-            .byte $73,$e1       ; NOP
+            .byte $73,$e1       ; NOP               (aka NPO)
             .byte $1a,$b0       ; * NOP implied
             .byte $3a,$b0       ; * NOP implied
             .byte $5a,$b0       ; * NOP implied
@@ -3397,7 +3406,7 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $73,$30       ; * RRA (indirect),y
             .byte $98,$87       ; SBC
             .byte $eb,$a0       ; * SBC immediate
-            .byte $9b,$1f       ; SLO
+            .byte $9b,$1f       ; SLO               (aka ASO)
             .byte $07,$70       ; * SLO zero page
             .byte $17,$80       ; * SLO zero page,x
             .byte $0f,$40       ; * SLO absolute
@@ -3405,7 +3414,7 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $1b,$60       ; * SLO absolute,y
             .byte $03,$20       ; * SLO (indirect,x)
             .byte $13,$30       ; * SLO (indirect),y
-            .byte $9c,$8b       ; SRE
+            .byte $9c,$8b       ; SRE               (aka LSE)
             .byte $47,$70       ; * SRE zero page
             .byte $57,$80       ; * SRE zero page,x
             .byte $4f,$40       ; * SRE absolute
@@ -3413,24 +3422,24 @@ Extended:   .byte $9a,$ef       ; SKW
             .byte $5b,$60       ; * SRE absolute,y
             .byte $43,$20       ; * SRE (indirect,x)
             .byte $53,$30       ; * SRE (indirect),y
-            .byte $9a,$31       ; SHX
+            .byte $9a,$31       ; SHX               (aka SXA, XAS)
             .byte $9e,$60       ; * SHX absolute,y
-            .byte $9a,$33       ; SHY
+            .byte $9a,$33       ; SHY               (aka SYA, SAY)
             .byte $9c,$50       ; * SHY absolute,x
-            .byte $a3,$e1       ; TOP
+            .byte $a3,$e1       ; TOP               (aka NOP, SKW)
             .byte $0c,$40       ; * TOP absolute
             .byte $1c,$50       ; * TOP absolute,x
             .byte $5c,$50       ; * TOP absolute,x
             .byte $7c,$50       ; * TOP absolute,x
             .byte $dc,$50       ; * TOP absolute,x
             .byte $fc,$50       ; * TOP absolute,x
-            .byte $0b,$8b       ; ANE
+            .byte $0b,$8b       ; ANE               (aka XAA)
             .byte $8b,$a0       ; * ANE immediate
-            .byte $9a,$27       ; SHS
+            .byte $9a,$27       ; SHS               (aka TAS, XAS)
             .byte $9b,$60       ; * SHS absolute,y
-            .byte $50,$5b       ; JAM
+            .byte $50,$5b       ; JAM               (aka HLT, KIL)
             .byte $02,$b0       ; * JAM implied           
-            .byte $43,$29       ; HLT
+            .byte $43,$29       ; HLT               (aka HLT, JAM)
             .byte $02,$b0       ; * HLT implied
             .byte XTABLE_END,$00; End of 6502 extended table
 
@@ -4037,7 +4046,7 @@ CheckRel:   ldx #$00            ; Check the instruction at the working address
 
 ; Check Range
 ; Check to see if C_PT is greater than or equal to Range End  
-; In range is Carry is clear; out of range if Carry is set    
+; In range if Carry is clear; out of range if Carry is set    
 mChRange:   lda RANGE_END+1
             cmp W_ADDR+1
             bcc out_range
