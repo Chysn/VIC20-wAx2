@@ -1663,7 +1663,7 @@ Addr2CP:    lda W_ADDR          ; Move working address to Command Pointer
             ; Fall through to CPtoBASIC
             
 CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
-            beq cp2bas_r        ; ,,
+            beq init_r          ; ,, (return via some random RTS)
             lda #"C"            ; Create the floating-point variable name CP
             sta $45             ;   for "Command Pointer"
             lda #"P"            ;   ,,
@@ -1680,8 +1680,7 @@ CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
             jsr LAPLUS          ;   actual address.
 cp_pos:     ldx $47             ; Store the floating-point number in FAC1 to
             ldy $48             ;   the variable memory
-            jsr STORFAC         ;   ,,
-cp2bas_r:   rts
+            jmp STORFAC         ;   ,,
             
 ; Assign or Initialize Symbols
 Symbols:    lda INBUFFER 
@@ -3028,24 +3027,24 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Go-1
             .byte >Help-1,>PlugMenu-1,>Symbols-1,>DEF-1
 
 ; Plug-In Menu Data           
-MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CHtxt,<BAtxt,<WAtxt
-MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CHtxt,>BAtxt,>WAtxt
+MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CYtxt,<BAtxt,<WAtxt
+MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CYtxt,>BAtxt,>WAtxt
 MEtxt:      .asc LF,".P ",QUOTE,"MEM CONF",QUOTE,$00
 REtxt:      .asc LF,".P ",QUOTE,"RELOC",QUOTE,$00
 DEtxt:      .asc LF,".P ",QUOTE,"DEBUG",QUOTE,$00
-MLtxt:      .asc LF,".P ",QUOTE,"ML2BASIC",QUOTE,$00
-CHtxt:      .asc LF,".P ",QUOTE,"CHAR HELP",QUOTE,$00
-BAtxt:      .asc LF,".P ",QUOTE,"BASIC AID",QUOTE,$00
+MLtxt:      .asc LF,".P ",QUOTE,"ML2BAS",QUOTE,$00
+CYtxt:      .asc LF,".P ",QUOTE,"CYC",QUOTE,$00
+BAtxt:      .asc LF,".P ",QUOTE,"BAS AID",QUOTE,$00
 WAtxt:      .asc LF,".P ",QUOTE,"WAXFER",QUOTE,LF,$00
 NormalTxt:  .asc " NORMAL $",$00
 ListTxt:    .asc " LIST $",$00
             
 MenuChar1:  .asc "M","R","D","M","C","B","W"
-MenuChar2:  .asc "E","E","E","L","H","A","A"
+MenuChar2:  .asc "E","E","E","L","Y","A","A"
 MenuLoc_L:  .byte <uConfig,<uRelocate,<uDebug,<uML2BAS
-            .byte <uChar,<uBASIC,<uwAxfer
+            .byte <uCycle,<uBASIC,<uwAxfer
 MenuLoc_H:  .byte >uConfig,>uRelocate,>uDebug,>uML2BAS
-            .byte >uChar,>uBASIC,>uwAxfer
+            .byte >uCycle,>uBASIC,>uwAxfer
 
 ; Addresses for error message text
 ErrAddr_L:  .byte <AsmErrMsg,<MISMATCH,<LabErrMsg,<ResErrMsg,<RBErrMsg
@@ -4060,61 +4059,54 @@ min_range:  clc
             rts
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; CHARACTER HELPER
-; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-Character-Helper
+; CYCLE COUNTER
+; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-Cycle-Counter
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-CURBYTE     = $0247             ; Current byte value
-
-uChar:      jmp ph_char
-            ; Command template
-            .asc $00,".U [ADDR]",$00
-ph_char:    bcc Canvas          ; If no address was provided, draw the canvas
-            lda #$00            ; Get the top of the screen for examination
-            sta C_PT            ; ,, Command Pointer will be the screen position
-            lda $0288           ; ,,
-            sta C_PT+1          ; ,,
-scanline:   lda #$00            ; Initialize the byte to 0
-            sta CURBYTE         ; ,,
-            ldx #$80            ; Set bit 7 in X (current bit value)
-            ldy #$00
-check:      lda (C_PT),y        ; Get the character on-screen
-            cmp #":"            ; Has the character been changed from colon?
-            beq cgnext          ; If not, just move to the next byte
-            txa                 ; Current bit value to A while mathing
-            ora CURBYTE         ; Add it to the byte as a 1
-            sta CURBYTE         ; ,,
-cgnext:     iny                 ; Move to the next screen character
-            txa                 ; Move X to the next bit value
-            lsr                 ; ,,
-            tax                 ; ,,
-            bne check           ; If X still has value, get next character
-output:     ldy #$00            ; Now, current byte is computed, so store it
-            lda CURBYTE         ;   at the working address
-            sta (W_ADDR),y      ;   ,,
-            jsr IncAddr         ; Move to the next working address
-            lda C_PT            ; Is everything done?
-            cmp #$9a            ; ,,
-            beq char_r          ; ,,
-            lda #$16            ; If not, drop down to the next screen line
-            clc                 ; ,,
-            adc C_PT            ; ,,
-            sta C_PT            ; ,,
-            bcc scanline        ; There aren't enough lines for carry to get set
-char_r:     jmp Addr2CP         ; Set CP and return
-
-; Draw Canvas
-Canvas:     jsr $e55f           ; Clear screen
-            ldy #$08            ; Draw an 8x8 grid in the upper-left corner
-cnextline:  ldx #$08            ;   of the screen, composed of colons
-            lda #":"            ;   ,,
--loop:      jsr $ffd2           ;   ,,
-            dex                 ;   ,,
-            bne loop            ;   ,,
-            jsr Linefeed        ; Drop to next line
-            dey                 ; Iterate over rows
-            bne cnextline       ; ,,
-            rts
-        
+uCycle:		jmp ph_cycle
+			.asc $00,".U ADDR",$00
+ph_cycle:	bcs cyc_ok
+			jmp SyntaxErr
+cyc_ok:		sei
+			jsr $fdf9			; Initialize hardware registers
+			lda #$fe			; Reset timer
+			sta $9114			; ,,
+			lda #$ff			; ,,
+			sta $9115			; ,,
+			lda #$4c			; JMP point
+			sta $00				;   ,,
+			lda W_ADDR			;   Low byte
+			sta $01				;   ,,
+			lda W_ADDR+1		;   High byte
+			sta $02				;   ,,
+			lda PROC			; Set processor status for execution
+			ora #$04			; ,, Keep interrupt flag set
+			pha					; ,,
+			plp					; ,,
+			lda ACC				; Set Accumulator
+			ldx XREG			; Set X
+			ldy YREG			; Set Y
+			jsr $0000			; Execute the specified subroutine
+			lda $9114			; Get current cycle counter
+			ldy $9115			; ,,
+			sta C_PT			; Put it in Command Pointer
+			sty C_PT+1			; ,,
+			cli					; Reinstate interrupt
+			lda #194			; Compensate for preparatory code
+			sec					; ,,
+			sbc C_PT			; ,,
+			sta C_PT			; ,,
+			lda #$ff			; ,,
+			sbc C_PT+1			; ,,
+			sta C_PT+1			; ,,
+     		jsr DirectMode		; If in program mode
+			beq cyc_disp		;   only set the CP variable
+			jmp CPtoBASIC		;   ,,
+cyc_disp:	jsr ResetOut		; If in direct mode, display the cycle count
+			jsr wAxPrompt		;   in hexadecimal
+			jsr HexPrefix		;   ,,
+			jsr ShowCP			;   ,,
+			jmp PrintBuff		;   ,,
+			       
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; BASIC AID
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-BASIC-Aid
