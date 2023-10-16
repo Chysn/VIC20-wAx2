@@ -234,6 +234,7 @@ jDirectMode:jmp DirectMode      ; a030
 jSizeOf:    jmp SizeOf          ; a033
 jDisasm:    jmp Disasm          ; a036
 jSyntaxErr: jmp SyntaxErr       ; a039
+jSetVL      jmp SetVL           ; a03c
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -1670,18 +1671,32 @@ CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
             lda #"P"            ;   ,,
             sta $46             ;   ,,
             jsr FNDVAR          ;   Find or create variable
-            jsr CPtoFAC1
-cp_pos:     ldx $47             ; Store the floating-point number in FAC1 to
+            ldy C_PT
+            lda C_PT+1
+            jsr ToFAC1
+store_var:  ldx $47             ; Store the floating-point number in FAC1 to
             ldy $48             ;   the variable memory
             jmp STORFAC         ;   ,,
-
-; Store CP in FAC1
-CPtoFAC1:   ldy C_PT            ; Convert the Command Pointer integer to a
-            lda C_PT+1          ;   floating-point number and store it in
-            jsr MAKFP           ;   FAC1
+            
+; Store 16-bit unsigned value in FAC1
+; And set VL variable in program mode
+; A = high, Y = low
+SetVL:      jsr ToFAC1
+            jsr DirectMode
+            beq init_r
+            lda #"V"
+            sta $45
+            lda #"L"
+            sta $46
+            jsr FNDVAR
+            jmp store_var
+            
+; Store 16-bit unsigned value in FAC1
+; A = high, Y = low
+ToFAC1:     jsr MAKFP           ; A/Y to FAC1
             jsr SGNFAC          ; Is the result negative?
             cmp #$ff            ; ,,
-            bne cp_pos          ; If not, there's nothing that needs to be done
+            bne init_r          ; If not, there's nothing that needs to be done
             lda #<F65536        ; If FAC1 is negative, it means that it's
             ldy #>F65536        ;   $8000 or more. Add 65536 to make CP the
             jmp LAPLUS          ;   actual address.
@@ -1697,7 +1712,7 @@ set_lab:    jsr ResetIn
             jsr SymbolIdx       ; Is this a valid symbol, and is there memory?
             jsr HexGet   
             bcs hex_ok
-		    jmp SYM_ERROR        
+            jmp SYM_ERROR        
 hex_ok:     sta SYMBOL_AH,y
             jsr HexGet          ; Get the low byte of the value
             bcs llow_ok         ; If there's no low byte provided, then the
@@ -1718,10 +1733,10 @@ init_r:     rts
 ; Get Symbol Index
 ; Return symbol index in Y
 ; Error (all symbols used, or bad symbol) if symbol error
-SymbolIdx:  cmp #FWD_NAME		; If the reserved forward reference symbol,
-            bne sym_range		;   assign it to a specific symbol location
-            ldy #MAX_SYM-1		;   ,,
-            lda #FWD_NAME+$80
+SymbolIdx:  cmp #FWD_NAME       ; If the reserved forward reference symbol,
+            bne sym_range       ;   assign it to a specific symbol location
+            ldy #MAX_SYM-1      ;   ,,
+            lda #FWD_NAME
             pha
             lda IDX_IN
             cmp #5
@@ -1739,8 +1754,7 @@ sym_range:  cmp #"0"            ; Allowed symbol names are 0-9, A-Z, and @
             cmp #"@"            ; ,, (includes A~)
             bcs good_name       ; ,,
 bad_name:   jmp SYM_ERROR        
-good_name:  ora #$80            ; High bit set indicates symbol is defined
-            pha
+good_name:  pha
             ldy #MAX_SYM-2      ; See if the name is already in the table
 -loop:      cmp SYMBOL_D,y      ; ,,
             beq sym_found       ; ,,
@@ -1794,32 +1808,33 @@ next_sym:   pla
             jsr CharOut         ;   ,,
             pla                 ;   ,,
             jsr HexOut          ;   ,,
-lablist_r:  jsr PrintBuff       ;   ,,
-            rts
+lablist_r:  jmp PrintBuff       ;   ,, 
+
+; Count forward references and return to the SymbolList loop
 undefd:     stx IDX_SYM
             ldy #$00            ; Forward reference count for this symbol
             ldx #$00            ; Forward record index
--loop:      lda SYMBOL_F,x
-            bpl next_undef
-            and #$3f
+-loop:      lda SYMBOL_F,x      ; Is this reference record in use?
+            beq next_undef      ; ,,
+            and #$3f            ; Mask off high byte flag (bit 6)
             cmp IDX_SYM
             bne next_undef
             iny
-next_undef: inx
-            cpx #MAX_FWD
-            bne loop
-            cpy #$00
-            beq next_sym
-show_fwd:   tya
-            pha
-            ldx IDX_SYM
-            jsr SymListCo
-            jsr ReverseOn
-            lda #"?"
-            jsr CharOut
-            pla
-            jsr HexOut
-fwd_d:      jsr PrintBuff
+next_undef: inx                 ; If record is unused, advance the
+            cpx #MAX_FWD        ;   forward reference index, and check
+            bne loop            ;   again
+            cpy #$00            ; If no forward references exist for the current
+            beq next_sym        ;   symbol, try the next one
+show_fwd:   tya                 ; If there is at least one forward reference,
+            pha                 ;   then display the symbol's record
+            ldx IDX_SYM         ;   ,,
+            jsr SymListCo       ;   ,,
+            jsr ReverseOn       ;   ,,
+            lda #"?"            ;   ,,
+            jsr CharOut         ;   ,,
+            pla                 ;   ,,
+            jsr HexOut          ;   ,, Number of unresolved references
+fwd_d:      jsr PrintBuff       ;   ,,
             jmp next_sym
 
 ; Symbol List Common            
@@ -1866,7 +1881,6 @@ expand_r:   jmp Transcribe
             
 ; Resolve Forward Reference            
 ResolveFwd: lda IDX_SYM
-            ora #$80            ; Set high bit, which is what we look for here
             ldx #$00            ; First order of business is finding unresolved
 -loop:      cmp SYMBOL_F,x      ;   records that match the symbol
             beq fwd_used
@@ -1958,7 +1972,6 @@ overflow:   inc OVERFLOW_F      ; Increment overflow counter if no records are
             bne URtoBASIC       ;   the Symbol Error. In BASIC, this condition
             jmp SYM_ERROR       ;   can be caught, so keep going for multi-pass
 empty_rec:  tya
-            ora #$80            ; Set the high bit to indicate record in use
             ldy BYTE_MOD        ; If the symbol was prefixed with >, then mark
             cpy #HIGH_BYTE      ;   this forward record to use the high byte
             bne store_rec       ;   on resolution, by setting bit 6 of the
@@ -3032,7 +3045,7 @@ MEtxt:      .asc LF,".P ",QUOTE,"MEM CONF",QUOTE,$00
 REtxt:      .asc LF,".P ",QUOTE,"RELOC",QUOTE,$00
 DEtxt:      .asc LF,".P ",QUOTE,"DEBUG",QUOTE,$00
 MLtxt:      .asc LF,".P ",QUOTE,"ML2BAS",QUOTE,$00
-CYtxt:      .asc LF,".P ",QUOTE,"CYC",QUOTE,$00
+CYtxt:      .asc LF,".P ",QUOTE,"CYCLES",QUOTE,$00
 BAtxt:      .asc LF,".P ",QUOTE,"BAS AID",QUOTE,$00
 WAtxt:      .asc LF,".P ",QUOTE,"WAXFER",QUOTE,LF,$00
 NormalTxt:  .asc " NORMAL $",$00
@@ -4087,22 +4100,20 @@ cyc_ok:     sei
             jsr $0000           ; Execute the specified subroutine
             lda $9114           ; Get current cycle counter
             ldy $9115           ; ,,
-            sta C_PT            ; Put it in command pointer
-            sty C_PT+1          ; ,,
+            sta W_ADDR          ; Put it in working address
+            sty W_ADDR+1        ; ,,
             cli                 ; Reinstate interrupt
             jsr FNDVAR          ;   Find or create variable         
             lda #194            ; Compensate for preparatory code's cycles
             sec                 ; ,,
-            sbc C_PT            ; ,,
-            sta C_PT            ; ,,
+            sbc W_ADDR          ; ,,
+            tay                 ; ,, Low byte Y for FAC conversion
             lda #$ff            ; ,,
-            sbc C_PT+1          ; ,,
-            sta C_PT+1          ; ,,
-            jsr CPtoBASIC       ; Set CP variable if in program mode
-            jsr DirectMode      ; If in program mode, just exit
+            sbc W_ADDR+1        ; ,, High byte A for FAC conversion
+            jsr SetVL           ; Put A/Y in FAC1 for display or variable set
+            jsr DirectMode      ; If in program mode, just set VV
             bne cyc_r           ;   ,,
-            jsr CPtoFAC1        ; If in direct mode, set FAC1
-            jsr $dddd           ;   Convert to string
+show_cyc:   jsr $dddd           ;   Convert FAC1 to string
             jsr $cb1e           ;   Print it
             jmp Linefeed        ;   Then linefeed
 cyc_r:      rts
