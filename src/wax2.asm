@@ -233,6 +233,7 @@ jNext:      jmp Next            ; a02d
 jDirectMode:jmp DirectMode      ; a030
 jSizeOf:    jmp SizeOf          ; a033
 jDisasm:    jmp Disasm          ; a036
+jSyntaxErr: jmp SyntaxErr       ; a039
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -730,8 +731,6 @@ asm_r:      rts
 ; new symbol.
 DefSymbol:  jsr CharGet         ; Get the next character after the symbol sigil
             jsr SymbolIdx       ; Get an index for the symbol in A
-            bcs have_sym        ;
-            jmp SYM_ERROR       ; Error if no symbol index could be secured
 have_sym:   jsr IsDefined       ; If this symbol is not yet defined, then
             bne is_def          ;   resolve the forward reference, if it
             sty IDX_SYM         ;   was used
@@ -1661,7 +1660,9 @@ Addr2CP:    lda W_ADDR          ; Move working address to Command Pointer
             lda W_ADDR+1        ; ,,
             sta C_PT+1          ; ,,
             ; Fall through to CPtoBASIC
-            
+
+; Store Command Pointer in CP variable
+; If running in program mode          
 CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
             beq init_r          ; ,, (return via some random RTS)
             lda #"C"            ; Create the floating-point variable name CP
@@ -1669,7 +1670,13 @@ CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
             lda #"P"            ;   ,,
             sta $46             ;   ,,
             jsr FNDVAR          ;   Find or create variable
-            ldy C_PT            ; Convert the Command Pointer integer to a
+            jsr CPtoFAC1
+cp_pos:     ldx $47             ; Store the floating-point number in FAC1 to
+            ldy $48             ;   the variable memory
+            jmp STORFAC         ;   ,,
+
+; Store CP in FAC1
+CPtoFAC1:   ldy C_PT            ; Convert the Command Pointer integer to a
             lda C_PT+1          ;   floating-point number and store it in
             jsr MAKFP           ;   FAC1
             jsr SGNFAC          ; Is the result negative?
@@ -1677,11 +1684,8 @@ CPtoBASIC:  jsr DirectMode      ; Do not set this variable in direct mode
             bne cp_pos          ; If not, there's nothing that needs to be done
             lda #<F65536        ; If FAC1 is negative, it means that it's
             ldy #>F65536        ;   $8000 or more. Add 65536 to make CP the
-            jsr LAPLUS          ;   actual address.
-cp_pos:     ldx $47             ; Store the floating-point number in FAC1 to
-            ldy $48             ;   the variable memory
-            jmp STORFAC         ;   ,,
-            
+            jmp LAPLUS          ;   actual address.
+           
 ; Assign or Initialize Symbols
 Symbols:    lda INBUFFER 
             bne set_lab         ; If the tool is alone, show the symbol table
@@ -1690,11 +1694,11 @@ set_lab:    jsr ResetIn
             jsr CharGet
             cmp #"-"            ; If - follows the tool, initialize the symbol
             beq init_clear      ;   table
-            jsr SymbolIdx       ; Is this a valid symbol, and is there memory
-            bcc sym_err         ;   to assign it?
+            jsr SymbolIdx       ; Is this a valid symbol, and is there memory?
             jsr HexGet   
-            bcc sym_err
-            sta SYMBOL_AH,y
+            bcs hex_ok
+		    jmp SYM_ERROR        
+hex_ok:     sta SYMBOL_AH,y
             jsr HexGet          ; Get the low byte of the value
             bcs llow_ok         ; If there's no low byte provided, then the
             lda SYMBOL_AH,y     ;   only valid byte is treated as the low
@@ -1704,7 +1708,6 @@ set_lab:    jsr ResetIn
             txa                 ;   8-bit value.
 llow_ok:    sta SYMBOL_AL,y
             rts            
-sym_err:    jmp SYM_ERROR        
 init_clear: lda #$00            ; Initialize bytes for the symbol table
             ldy #ST_SIZE-1      ;   See the Symbol Table section at the top for
 -loop:      sta SYMBOL_D,y      ;   information about resizing or relocating the
@@ -1713,11 +1716,11 @@ init_clear: lda #$00            ; Initialize bytes for the symbol table
 init_r:     rts
             
 ; Get Symbol Index
-; Return symbol index in Y and set Carry
-; Error (all symbols used, or bad symbol) if Carry clear
-SymbolIdx:  cmp #FWD_NAME
-            bne sym_range
-            ldy #MAX_SYM-1
+; Return symbol index in Y
+; Error (all symbols used, or bad symbol) if symbol error
+SymbolIdx:  cmp #FWD_NAME		; If the reserved forward reference symbol,
+            bne sym_range		;   assign it to a specific symbol location
+            ldy #MAX_SYM-1		;   ,,
             lda #FWD_NAME+$80
             pha
             lda IDX_IN
@@ -1727,18 +1730,15 @@ SymbolIdx:  cmp #FWD_NAME
             sta SYMBOL_AL,y
             sta SYMBOL_AH,y
             jmp sym_found
-sym_range:  cmp #"@"            ; Allowed symbol names are 0-9, A-Z, and @
-            beq good_name       ; ,,
-            cmp #"0"            ; ,,
+sym_range:  cmp #"0"            ; Allowed symbol names are 0-9, A-Z, and @
             bcc bad_name        ; ,,
             cmp #"Z"+1          ; ,,
             bcs bad_name        ; ,,
             cmp #"9"+1          ; ,,
             bcc good_name       ; ,,
-            cmp #"A"            ; ,,
+            cmp #"@"            ; ,, (includes A~)
             bcs good_name       ; ,,
-bad_name:   clc
-            rts      
+bad_name:   jmp SYM_ERROR        
 good_name:  ora #$80            ; High bit set indicates symbol is defined
             pha
             ldy #MAX_SYM-2      ; See if the name is already in the table
@@ -1755,7 +1755,6 @@ good_name:  ora #$80            ; High bit set indicates symbol is defined
             jmp bad_name        ;   use. Return for error
 sym_found:  pla
             sta SYMBOL_D,y      ; Populate the symbol table with the name
-            sec                 ; Set Carry flag indicates success
             rts            
             
 ; Show Symbols List           
@@ -2411,6 +2410,8 @@ cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
             sta USER_VECT       ;   looked up address
             lda MenuLoc_H,y     ;   ,,
             sta USER_VECT+1     ;   ,,
+            jsr DirectMode      ; Do not display usage in program mode
+            bne menu_r          ; ,,
             ldx #0              ; Get character at screen position
 -loop:      lda ($d1,x)         ; ,,
             cmp #WEDGE          ; Is it a . character?
@@ -2831,8 +2832,6 @@ handle_sym: ldy $83             ; Don't handle symbols if the name is in quotes
             jmp Transcribe      ;   ,,
 start_exp:  jsr CHRGET          ; Get the next character, the symbol name
             jsr SymbolIdx       ; Get the symbol index
-            bcs get_s_name
-            jmp SYM_ERROR       ; If not, ?SYMBOL ERROR
 get_s_name: jsr IsDefined
             bne go_expand
             lda IDX_IN          ; The symbol has not yet been defined; parse
@@ -4062,51 +4061,52 @@ min_range:  clc
 ; CYCLE COUNTER
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-Cycle-Counter
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-uCycle:		jmp ph_cycle
-			.asc $00,".U ADDR",$00
-ph_cycle:	bcs cyc_ok
-			jmp SyntaxErr
-cyc_ok:		sei
-			jsr $fdf9			; Initialize hardware registers
-			lda #$fe			; Reset timer
-			sta $9114			; ,,
-			lda #$ff			; ,,
-			sta $9115			; ,,
-			lda #$4c			; JMP point
-			sta $00				;   ,,
-			lda W_ADDR			;   Low byte
-			sta $01				;   ,,
-			lda W_ADDR+1		;   High byte
-			sta $02				;   ,,
-			lda PROC			; Set processor status for execution
-			ora #$04			; ,, Keep interrupt flag set
-			pha					; ,,
-			plp					; ,,
-			lda ACC				; Set Accumulator
-			ldx XREG			; Set X
-			ldy YREG			; Set Y
-			jsr $0000			; Execute the specified subroutine
-			lda $9114			; Get current cycle counter
-			ldy $9115			; ,,
-			sta C_PT			; Put it in Command Pointer
-			sty C_PT+1			; ,,
-			cli					; Reinstate interrupt
-			lda #194			; Compensate for preparatory code
-			sec					; ,,
-			sbc C_PT			; ,,
-			sta C_PT			; ,,
-			lda #$ff			; ,,
-			sbc C_PT+1			; ,,
-			sta C_PT+1			; ,,
-     		jsr DirectMode		; If in program mode
-			beq cyc_disp		;   only set the CP variable
-			jmp CPtoBASIC		;   ,,
-cyc_disp:	jsr ResetOut		; If in direct mode, display the cycle count
-			jsr wAxPrompt		;   in hexadecimal
-			jsr HexPrefix		;   ,,
-			jsr ShowCP			;   ,,
-			jmp PrintBuff		;   ,,
-			       
+uCycle:     jmp ph_cycle
+            .asc $00,".U ADDR",$00
+ph_cycle:   bcs cyc_ok
+            jmp SyntaxErr
+cyc_ok:     sei
+            jsr $fdf9           ; Initialize hardware registers
+            lda #$fe            ; Reset timer
+            sta $9114           ; ,,
+            lda #$ff            ; ,,
+            sta $9115           ; ,,
+            lda #$4c            ; JMP point
+            sta $00             ;   ,,
+            lda W_ADDR          ;   Low byte
+            sta $01             ;   ,,
+            lda W_ADDR+1        ;   High byte
+            sta $02             ;   ,,
+            lda PROC            ; Set processor status for execution
+            ora #$04            ; ,, Keep interrupt flag set
+            pha                 ; ,,
+            plp                 ; ,,
+            lda ACC             ; Set Accumulator
+            ldx XREG            ; Set X
+            ldy YREG            ; Set Y
+            jsr $0000           ; Execute the specified subroutine
+            lda $9114           ; Get current cycle counter
+            ldy $9115           ; ,,
+            sta C_PT            ; Put it in command pointer
+            sty C_PT+1          ; ,,
+            cli                 ; Reinstate interrupt
+            jsr FNDVAR          ;   Find or create variable         
+            lda #194            ; Compensate for preparatory code's cycles
+            sec                 ; ,,
+            sbc C_PT            ; ,,
+            sta C_PT            ; ,,
+            lda #$ff            ; ,,
+            sbc C_PT+1          ; ,,
+            sta C_PT+1          ; ,,
+            jsr CPtoBASIC       ; Set CP variable if in program mode
+            jsr DirectMode      ; If in program mode, just exit
+            bne cyc_r           ;   ,,
+            jsr CPtoFAC1        ; If in direct mode, set FAC1
+            jsr $dddd           ;   Convert to string
+            jsr $cb1e           ;   Print it
+            jmp Linefeed        ;   Then linefeed
+cyc_r:      rts
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; BASIC AID
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Plug-In:-BASIC-Aid
