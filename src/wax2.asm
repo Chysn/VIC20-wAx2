@@ -234,7 +234,7 @@ jDirectMode:jmp DirectMode      ; a030
 jSizeOf:    jmp SizeOf          ; a033
 jDisasm:    jmp Disasm          ; a036
 jSyntaxErr: jmp SyntaxErr       ; a039
-jSetVL      jmp SetVL           ; a03c
+jSetUserVar:jmp SetUserVar      ; a03c
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; INSTALLER
@@ -1681,15 +1681,14 @@ store_var:  ldx $47             ; Store the floating-point number in FAC1 to
 ; Store 16-bit unsigned value in FAC1
 ; And set VL variable in program mode
 ; A = high, Y = low
-SetVL:      jsr ToFAC1
-            jsr DirectMode
-            beq init_r
-            lda #"V"
-            sta $45
-            lda #"L"
-            sta $46
-            jsr FNDVAR
-            jmp store_var
+SetUserVar: jsr ToFAC1			; Convert A/Y to 16-bit unsigned FAC1
+            jsr DirectMode		; If in direct mode, do not assign the
+            beq init_r			;   variable
+            lda #"U"			; In program mode, find or create UU
+            sta $45				; ,,
+            sta $46				; ,,
+            jsr FNDVAR			; ,,
+            jmp store_var		; Store FAC1 in that variable
             
 ; Store 16-bit unsigned value in FAC1
 ; A = high, Y = low
@@ -4110,8 +4109,8 @@ cyc_ok:     sei
             tay                 ; ,, Low byte Y for FAC conversion
             lda #$ff            ; ,,
             sbc W_ADDR+1        ; ,, High byte A for FAC conversion
-            jsr SetVL           ; Put A/Y in FAC1 for display or variable set
-            jsr DirectMode      ; If in program mode, just set VV
+            jsr SetUserVar      ; Put A/Y in FAC1 for display or variable set
+            jsr DirectMode      ; If in direct mode, show the VAC1 value
             bne cyc_r           ;   ,,
 show_cyc:   jsr $dddd           ;   Convert FAC1 to string
             jsr $cb1e           ;   Print it
