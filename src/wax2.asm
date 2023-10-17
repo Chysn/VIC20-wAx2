@@ -4097,13 +4097,14 @@ cyc_ok:     sei
             ldx XREG            ; Set X
             ldy YREG            ; Set Y
             jsr $0000           ; Execute the specified subroutine
+            jsr SYS_TAIL		; Save registers in SYS locations
             lda $9114           ; Get current cycle counter
             ldy $9115           ; ,,
             sta W_ADDR          ; Put it in working address
             sty W_ADDR+1        ; ,,
             cli                 ; Reinstate interrupt
             jsr FNDVAR          ;   Find or create variable         
-            lda #194            ; Compensate for preparatory code's cycles
+            lda #159            ; Compensate for preparatory code's cycles
             sec                 ; ,,
             sbc W_ADDR          ; ,,
             tay                 ; ,, Low byte Y for FAC conversion
