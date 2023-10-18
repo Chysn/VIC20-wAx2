@@ -4083,35 +4083,28 @@ cyc_ok:     sei
             sta $9114           ; ,,
             lda #$ff            ; ,,
             sta $9115           ; ,,
-            lda #$4c            ; JMP point
-            sta $00             ;   ,,
-            lda W_ADDR          ;   Low byte
-            sta $01             ;   ,,
-            lda W_ADDR+1        ;   High byte
-            sta $02             ;   ,,
-            lda PROC            ; Set processor status for execution
-            ora #$04            ; ,, Keep interrupt flag set
-            pha                 ; ,,
-            plp                 ; ,,
-            lda ACC             ; Set Accumulator
-            ldx XREG            ; Set X
-            ldy YREG            ; Set Y
-            jsr $0000           ; Execute the specified subroutine
-            jsr SYS_TAIL		; Save registers in SYS locations
+            lda W_ADDR          ; Set specified routine address for SYS
+            sta $14             ;   ,,
+            lda W_ADDR+1        ;   ,,
+            sta $15             ;   ,,
+            lda PROC			; Make sure that SEI is still set when
+            ora #$04			;   SYS's processor flags are pulled
+            sta PROC			;   ,,
+            jsr $e12d			; SYS to set registers, run, and set memory
             lda $9114           ; Get current cycle counter
             ldy $9115           ; ,,
             sta W_ADDR          ; Put it in working address
             sty W_ADDR+1        ; ,,
             cli                 ; Reinstate interrupt
             jsr FNDVAR          ;   Find or create variable         
-            lda #159            ; Compensate for preparatory code's cycles
+            lda #150            ; Compensate for preparatory code's cycles
             sec                 ; ,,
             sbc W_ADDR          ; ,,
             tay                 ; ,, Low byte Y for FAC conversion
             lda #$ff            ; ,,
             sbc W_ADDR+1        ; ,, High byte A for FAC conversion
             jsr SetUserVar      ; Put A/Y in FAC1 for display or variable set
-            jsr DirectMode      ; If in direct mode, show the VAC1 value
+            jsr DirectMode      ; If in direct mode, show the FAC1 value
             bne cyc_r           ;   ,,
 show_cyc:   jsr $dddd           ;   Convert FAC1 to string
             jsr $cb1e           ;   Print it
