@@ -866,16 +866,11 @@ high_byte:  sta OPERAND         ;   set the low byte with the input
 Arithmetic: jsr CharGet         ; Check character after operand
             cmp #"+"            ; Perform addition
             beq add_op          ; ,,
-            cmp #$aa            ; Non-detokenized +
-            beq add_op          ; ,,
             cmp #"-"            ; Perform subtraction
             beq sub_op          ; ,,
-            cmp #$ab            ; Non-detokenized -
-            beq sub_op          ; ,,
 getop_r:    rts
-sub_op:     jsr CharGet
-            jsr Char2Nyb
-            bcc getop_r
+sub_op:     jsr HexGet
+			bcc getop_r
             sta TEMP_CALC
             sec
             lda OPERAND
@@ -884,19 +879,23 @@ sub_op:     jsr CharGet
             bcs repl_hex
             dec OPERAND+1
             jmp repl_hex
-add_op:     jsr CharGet         ; Get the character after the operator
-            jsr Char2Nyb        ; Treat it as a single hex digit
-            bcc getop_r         ; Return if invalid hex digit
+add_op:     jsr HexGet
+			bcc getop_r         ; Return if invalid hex digit
             clc                 ; Add the number to the operand
             adc OPERAND         ; ,,
             sta OPERAND         ; ,,
             bcc repl_hex        ; ,,
             inc OPERAND+1       ; ,,
-repl_hex:   dec IDX_IN          ; Set the index of the operator and its
-            dec IDX_IN          ;   argument to 1, so that the Hypotest
-            lda #1              ;   compare no longer sees them
-            jsr AddInput        ;   ,,
-            jsr AddInput        ;   ,,
+repl_hex:   ldx IDX_IN
+			dex
+			dex
+			dex
+			lda #1
+			sta INBUFFER,x
+			inx
+			sta INBUFFER,x
+			inx
+			sta INBUFFER,x
             jsr ResetOut        ; Will be using the output buffer as tmp hex
             ldx PREV_IDX        ; Starting index of instruction operand
             stx IDX_IN
@@ -2535,8 +2534,8 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
 HexGet:     jsr CharGet
             cmp #QUOTE          ; Ignore quotation marks in hex, to allow
             beq HexGet          ;   string interpolation of hex in commands
-            cmp #"-"            ; Skip two characters if the first is a
-            bne nyb             ;   hyphen (see Register for why)
+            cmp #"="            ; Skip two characters if the first is an
+            bne nyb             ;   equal sign (see Register for why)
             jsr CharGet         ;   ,,
             clc                 ;   ,,
             rts                 ;   ,,
@@ -2549,10 +2548,18 @@ nyb:        jsr Char2Nyb        ; Is this valid hex [0-9A-F]?
             sta WORK
             jsr CharGet
             jsr Char2Nyb
-            bcc hexget_r        ; Clear Carry flag indicates invalid hex
+            bcc one_digit       ; Clear Carry flag indicates invalid hex
             ora WORK            ; Combine high and low nybbles
             ;sec                ; Set Carry flag indicates success
 hexget_r:   rts
+one_digit:	lda WORK			; Only a single hex character was provided,
+			lsr					;   so divide the value by 16 to bring it
+			lsr					;   back to a one-hex-digit value.
+			lsr					;   ,,
+			lsr					;   ,,
+			dec IDX_IN			; Back one input index. The only thing that will
+			sec					;   work with the one-digit syntax is arithmetic
+			rts
             
 ; Increment Working Address
 ; Get the working byte and advance working address by one
@@ -2820,7 +2827,12 @@ ch_sym:     cmp #SIGIL          ; Handle symbols
             beq handle_sym      ; ,,
             cmp #QUOTE          ; If a quote is found, modify CHRGET so that
             bne ch_token        ;   spaces are no longer filtered out
-            lda #$06            ; $0082 BEQ $0073 -> BEQ $008a
+            lda #$06			;   until the next quote. At an end quote,
+            cmp $83				;   put CHRGET back to normal.
+            bne qu_on			;   ,,
+            lda #$ef			;   ,,
+            .byte $3c			; DOP (skip byte)
+qu_on:      lda #$06            ; $0082 BEQ $0073 -> BEQ $008a
             sta $83             ; ,,
             lda #QUOTE          ; Put quote back so it can be added to buffer
 ch_token:   cmp #$80            ; Is the character in A a BASIC token?
@@ -3063,7 +3075,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
 Banner:     .asc LF,$b0,LF
             .asc $dd," BEIGEMAZE.COM/WAX2",LF
             .asc $dd,LF
