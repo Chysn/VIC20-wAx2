@@ -1191,8 +1191,10 @@ pfoff:      lda #RVS_OFF        ; Reverse off = flag is off
             jsr HexOut          ; ,,
             jmp PrintBuff       ; Print the buffer
             
-; Set register values    
-; You can keep a register the same by entering a hyphen in its place        
+; Set register values
+; In the order AA [XX] [YY] [PR] [ST] [PC]
+; The stack pointer value is not actually set 
+; Keep a register the same by entering == in its place  
 Register:   jsr ResetIn         ; Reset in because allowing a single byte
             jsr CharGet         ; If alone on the line, show register display
             beq RegDisp         ; ,,
@@ -2058,7 +2060,29 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
 QUOTE_FL    = $0247             ; Quote flag for filename
 FIRST_REC   = $0248             ; First record flag
 
-Directory:  jsr CLALL           ; Close all files
+Directory:  lda INBUFFER
+			cmp #"/"
+			bne show_dir
+
+			; Execute disk command			
+	 		ldx DEVICE
+			ldy #15
+			lda #15
+			jsr SETLFS
+			jsr OPEN
+			ldx #15
+			jsr $ffc9
+			ldy #0
+-loop:		iny
+			lda INBUFFER,y
+			jsr $ffd2
+			cmp #0
+			bne loop
+			ldx #15
+			jmp CLOSE			
+			
+			; Display directory
+show_dir:	jsr CLALL           ; Close all files
             lsr FIRST_REC       ; Clear first record flag
             lda #1              ; SETNAM - (1) Set name length
             ldx #<lfs+1         ; - Set name as the $ used below
@@ -2088,11 +2112,9 @@ newline:    jsr ISCNTC          ; Exit if STOP key is pressed
             cmp #$22            ; Is character a quotation mark?
             bne proc_name       ; If not, go process the name
             lda QUOTE_FL        ; If it's the first quote in this line, add
-            bne set_quote       ;   the load tool and the starting quote mark
-            jsr wAxPrompt       ;   to the output buffer
-            lda #T_LOA          ;   ,,
-            jsr CharOut         ;   ,,
-            jsr DQuote
+            bne set_quote       ;   the prefix and the starting quote mark
+            jsr AddrPrefix		;	,,
+            jsr DQuote			;   ,,
 set_quote:  sec                 ; Set the quote flag to either %10000000 or
             ror QUOTE_FL        ;   %11000000
             bcc loop            ; Go back for next character
@@ -2323,7 +2345,8 @@ PlugIn:     php                 ; Push processor status, used by most tools
             lda INBUFFER        ; If the first character is P, then the user
             cmp #"P"            ;   is asking for the usage text
             beq ShowUsage       ;   ,,
-            jsr PlugType        ; Determine the plug-in type
+            ldy #3				; Get plug-in type
+            lda (USER_VECT),y	; ,,
             bmi is_list         ; ,,
             plp                 ; Normal tool
             jmp (USER_VECT)     ; ,,
@@ -2344,16 +2367,6 @@ show_pr:    jsr PrintStr        ;   ,,
             lda #LF
             jmp CHROUT
                 
-; Get Plug-In Type
-; Z = 1 = List
-; Z = 0 = Normal
-;     jsr PlugType
-;     bmi list_type
-;     bpl normal_type
-PlugType:   ldy #3              ; If the user plug-in's 4th byte is $80,
-            lda (USER_VECT),y   ;   then the plug-in will use the List tool
-            rts                 ;   to format its output. Otherwise, it will be
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; PLUG-IN MANAGER
 ; https://github.com/Chysn/VIC20-wAx2/wiki/User-Plug-In#user-plug-in-manager
@@ -2386,14 +2399,8 @@ get_name:   jsr CharGet         ; Get the next two characters after the quote
 mnext:      dey                 ; Iterate
             bpl loop            ; ,,
             jmp SyntaxErr       ; Syntax error if plug-in not found
-ShowMenu:   jsr PlugType        ; Show the type of plug-in for the user's
-            bmi list_plug       ;   convenience
-            lda #<NormalTxt     ;   ,,
-            ldy #>NormalTxt     ;   ,,
-            jmp show_type       ;   ,,
-list_plug:  lda #<ListTxt       ;   ,,
-            ldy #>ListTxt       ;   ,,
-show_type:  jsr PrintStr        ;   ,,  
+ShowMenu:   lda #"$"
+			jsr CHROUT
             jsr ResetOut        ; Show the current address of the plug-in 
             lda USER_VECT+1     ;   ,,
             jsr HexOut          ;   ,,
@@ -3059,8 +3066,6 @@ MLtxt:      .asc LF,".P ",QUOTE,"ML2BAS",QUOTE,$00
 CYtxt:      .asc LF,".P ",QUOTE,"CYCLES",QUOTE,$00
 BAtxt:      .asc LF,".P ",QUOTE,"BAS AID",QUOTE,$00
 WAtxt:      .asc LF,".P ",QUOTE,"WAXFER",QUOTE,LF,$00
-NormalTxt:  .asc " NORMAL $",$00
-ListTxt:    .asc " LIST $",$00
             
 MenuChar1:  .asc "M","R","D","M","C","B","W"
 MenuChar2:  .asc "E","E","E","L","Y","A","A"
@@ -3075,7 +3080,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
 Banner:     .asc LF,$b0,LF
             .asc $dd," BEIGEMAZE.COM/WAX2",LF
             .asc $dd,LF
@@ -3093,7 +3098,7 @@ HelpScr1:   .asc LF
             .asc "I TEXT    ",$dd,"B BRKPOINT",LF
             .asc "% BINARY  ",$dd,"@ SYMBOLS",LF
             .asc "C COMPARE ",$dd,"* SET CP",LF,$00
-HelpScr2:   .asc "H SEARCH  ",$dd,"T TRANSFER",LF
+HelpScr2:   .asc "H SEARCH  ",$dd,"T XFER",LF
             .asc "L LOAD    ",$dd,$5e," STAGE",LF 
             .asc "S SAVE    ",$dd,"= TEST",LF
             .asc "F FILES   ",$dd,LF
