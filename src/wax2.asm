@@ -100,7 +100,7 @@ OPEN        = $ffc0             ; Open logical file
 CLALL       = $ffe7             ; Close all files
 IOSTATUS    = $90               ; I/O Status
 CHKIN       = $ffc6             ; Define file as input
-CHKOUT		= $ffc9				; Define file as output
+CHKOUT      = $ffc9             ; Define file as output
 CHRIN       = $ffcf             ; Get input
 CLRCHN      = $ffcc             ; Close channel
 ASCFLT      = $dcf3             ; Convert base-10 to FAC1
@@ -115,6 +115,10 @@ SGNFAC      = $dc2b             ; Sign of FAC1 (A=$ff if negative)
 LAPLUS      = $d867             ; Add FAC2 to FAC1
 CHRTST      = $d113             ; Check character between A and Z
 PLOT        = $fff0             ; Get or set cursor position
+TALK        = $ffb4             ; Open device command channel
+TALKSA      = $ff96             ; TALK secondary address
+IECIN       = $ffa5             ; Get byte from serial device
+UNTALK      = $ffab             ; Close command channel
 
 ; System resources - Vectors and Pointers
 IGONE       = $0308             ; Vector to GONE
@@ -871,7 +875,7 @@ Arithmetic: jsr CharGet         ; Check character after operand
             beq sub_op          ; ,,
 getop_r:    rts
 sub_op:     jsr HexGet
-			bcc getop_r
+            bcc getop_r
             sta TEMP_CALC
             sec
             lda OPERAND
@@ -881,22 +885,22 @@ sub_op:     jsr HexGet
             dec OPERAND+1
             jmp repl_hex
 add_op:     jsr HexGet
-			bcc getop_r         ; Return if invalid hex digit
+            bcc getop_r         ; Return if invalid hex digit
             clc                 ; Add the number to the operand
             adc OPERAND         ; ,,
             sta OPERAND         ; ,,
             bcc repl_hex        ; ,,
             inc OPERAND+1       ; ,,
 repl_hex:   ldx IDX_IN
-			dex
-			dex
-			dex
-			lda #1
-			sta INBUFFER,x
-			inx
-			sta INBUFFER,x
-			inx
-			sta INBUFFER,x
+            dex
+            dex
+            dex
+            lda #1
+            sta INBUFFER,x
+            inx
+            sta INBUFFER,x
+            inx
+            sta INBUFFER,x
             jsr ResetOut        ; Will be using the output buffer as tmp hex
             ldx PREV_IDX        ; Starting index of instruction operand
             stx IDX_IN
@@ -1683,14 +1687,14 @@ store_var:  ldx $47             ; Store the floating-point number in FAC1 to
 ; Store 16-bit unsigned value in FAC1
 ; And set VL variable in program mode
 ; A = high, Y = low
-SetUserVar: jsr ToFAC1			; Convert A/Y to 16-bit unsigned FAC1
-            jsr DirectMode		; If in direct mode, do not assign the
-            beq init_r			;   variable
-            lda #"U"			; In program mode, find or create UU
-            sta $45				; ,,
-            sta $46				; ,,
-            jsr FNDVAR			; ,,
-            jmp store_var		; Store FAC1 in that variable
+SetUserVar: jsr ToFAC1          ; Convert A/Y to 16-bit unsigned FAC1
+            jsr DirectMode      ; If in direct mode, do not assign the
+            beq init_r          ;   variable
+            lda #"U"            ; In program mode, find or create UU
+            sta $45             ; ,,
+            sta $46             ; ,,
+            jsr FNDVAR          ; ,,
+            jmp store_var       ; Store FAC1 in that variable
             
 ; Store 16-bit unsigned value in FAC1
 ; A = high, Y = low
@@ -2061,43 +2065,63 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
 QUOTE_FL    = $0247             ; Quote flag for filename
 FIRST_REC   = $0248             ; First record flag
 
-Directory:  lda INBUFFER		; First character after the F tool
-			beq show_dir		; Nothing, show directory
-			cmp #QUOTE			; Quote, show directory
-			beq show_dir		; ,,
-			cmp #"#"			; Octothorpe, set device
-			bne disk_cmd		; Anything else, run disk command
-			lda INBUFFER+1		; Get next character
-			jsr Char2Nyb		; Is the character a valid hex digit?
-			bcs set_dev   		; If not, device not present
-			jmp dFail			; ,,
-set_dev:	sta DEVICE			; If so, set device number
-			rts
+Directory:  lda INBUFFER        ; First character after the F tool
+            beq show_dir        ; Nothing, show directory
+            cmp #QUOTE          ; Quote, show directory
+            beq show_dir        ; ,,
+            cmp #"#"            ; Octothorpe, set device
+            bne disk_cmd        ; Anything else, run disk command
+            lda INBUFFER+1      ; Get next character
+            jsr Char2Nyb        ; Is the character a valid hex digit?
+            bcs set_dev         ; If not, device not present
+            jmp dFail           ; ,,
+set_dev:    sta DEVICE          ; If so, set device number
+            rts
 
-			; Execute disk command			
-disk_cmd:	ldx DEVICE
-			ldy #15
-			lda #15
-			jsr SETLFS
-			jsr OPEN
-			ldx #15
-			jsr CHKOUT
-			ldy #$ff
--loop:		iny
-			lda INBUFFER,y
-			jsr CHROUT
-			cmp #0
-			bne loop
-			jmp CLALL
-			
-			; Display directory
-show_dir:	jsr CLALL           ; Close all files
-            lsr FIRST_REC       ; Clear first record flag
+            ; Execute disk command          
+disk_cmd:   ldx DEVICE
+            ldy #15
+            tya
+            jsr SETLFS
+            jsr OPEN
+            ldx #15
+            jsr CHKOUT
+            ldy #0
+-loop:      lda INBUFFER,y
+            beq show_st
+            jsr CHROUT
+            iny 
+            bne loop
+show_st:    jsr CLRCHN          ; Commands work for both systems, but
+            lda #15             ; do not get reported correctly for
+            jmp CLOSE           ; either. Failures reported as OK in VDrive
+            
+            ;jsr CLALL          ; Works for TDE, all reporting OK, but
+                                ; reports syntax errors for VDrive
+                                ; ,,
+                                        
+            ;lda #15            ; Works for VDrive, all reporting OK, but
+            ;jsr CLOSE          ; commands don't get executed for 
+            ;jsr CLRCHN         ; TDE at all
+            
+            ;lda DEVICE
+            ;jsr TALK
+            ;lda #$6f
+            ;jsr TALKSA     
+-loop:      ;jsr IECIN
+            ;jsr $e742
+            ;cmp #$0d
+            ;bne loop    
+            ;jmp UNTALK
+            
+            ; Display directory
+show_dir:   lsr FIRST_REC       ; Clear first record flag
             lda #1              ; SETNAM - (1) Set name length
             ldx #<lfs+1         ; - Set name as the $ used below
             ldy #>lfs+1         ; ,,
             jsr SETNAM          ; ,,
 lfs:        lda #"$"            ; SETLFS - Set file number as $
+            pha                 ; - Keep the file number for CLOSE
             ldx DEVICE          ; - Device number
             ldy #0              ; - Command
             jsr SETLFS          ; ,,
@@ -2122,8 +2146,8 @@ newline:    jsr ISCNTC          ; Exit if STOP key is pressed
             bne proc_name       ; If not, go process the name
             lda QUOTE_FL        ; If it's the first quote in this line, add
             bne set_quote       ;   the prefix and the starting quote mark
-            jsr AddrPrefix		;	,,
-            jsr DQuote			;   ,,
+            jsr AddrPrefix      ;   ,,
+            jsr DQuote          ;   ,,
 set_quote:  sec                 ; Set the quote flag to either %10000000 or
             ror QUOTE_FL        ;   %11000000
             bcc loop            ; Go back for next character
@@ -2143,11 +2167,10 @@ EOL:        bit QUOTE_FL        ; If a quote hasn't been finished, end of dir
 subseq:     sec                 ; Set the flag to display subsequent lines
             ror FIRST_REC       ; ,,
             jmp newline
-EOF:        jsr CLRCHN          ; Clear input channel and close file when
-            lda #"$"            ;   a quote pair isn't found
-            jsr CLOSE           ;   ,,
-            jmp ResetOut        ; Clear output buffer and return    
-
+EOF:        jsr CLRCHN          ; Reset channel destinations
+            pla                 ; Pushed "$" from the beginning
+            jmp CLOSE           ; Close directory
+            
 ; Fail with BASIC error message            
 dFail:      lda #5              ; ?DEVICE NOT PRESENT
             jmp ERROR_NO        ; Display error and warm start     
@@ -2306,33 +2329,26 @@ StartLine:  jsr ResetOut
             rts
 
 ; End Line
-; Complete the line by showing the count in red (differences) or
-; green (matches)            
+; Complete the line by showing the count in reverse (differs) or
+; normal text (same)
 EndLine:    lda COUNT           ; If the count is zero, don't
             bne report          ;   finish the buffer, because it's
             lda COUNT+1         ;   probably the first group of bytes
             bne report          ;   ,,
             rts                 ;   ,,
-report:     lda $0286           ; Store current color
-            pha                 ; ,,
-            lda STATUS
-            beq green
-red:        lda #$1c            ; Red
-            jsr CharOut
+report:     lda STATUS
+            beq same
+differ:     jsr ReverseOn
             lda #"!"
             jsr CharOut
             jmp show_qty
-green:      lda #$1e            ; Green
-            jsr CharOut
-            lda #"="
+same:       lda #"="
             jsr CharOut
 show_qty:   lda COUNT+1         ; Show number of matches/no matches
             jsr HexOut          ;   before the change
             lda COUNT           ;   ,,
             jsr HexOut          ;   ,,
             jsr PrintBuff       ;   ,,
-            pla                 ; Restore original color
-            sta $0286           ; ,,
             rts
                  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -2354,8 +2370,8 @@ PlugIn:     php                 ; Push processor status, used by most tools
             lda INBUFFER        ; If the first character is P, then the user
             cmp #"P"            ;   is asking for the usage text
             beq ShowUsage       ;   ,,
-            ldy #3				; Get plug-in type
-            lda (USER_VECT),y	; ,,
+            ldy #3              ; Get plug-in type
+            lda (USER_VECT),y   ; ,,
             bmi is_list         ; ,,
             plp                 ; Normal tool
             jmp (USER_VECT)     ; ,,
@@ -2409,7 +2425,7 @@ mnext:      dey                 ; Iterate
             bpl loop            ; ,,
             jmp SyntaxErr       ; Syntax error if plug-in not found
 ShowMenu:   lda #"$"
-			jsr CHROUT
+            jsr CHROUT
             jsr ResetOut        ; Show the current address of the plug-in 
             lda USER_VECT+1     ;   ,,
             jsr HexOut          ;   ,,
@@ -2568,14 +2584,14 @@ nyb:        jsr Char2Nyb        ; Is this valid hex [0-9A-F]?
             ora WORK            ; Combine high and low nybbles
             ;sec                ; Set Carry flag indicates success
 hexget_r:   rts
-one_digit:	lda WORK			; Only a single hex character was provided,
-			lsr					;   so divide the value by 16 to bring it
-			lsr					;   back to a one-hex-digit value.
-			lsr					;   ,,
-			lsr					;   ,,
-			dec IDX_IN			; Back one input index. The only thing that will
-			sec					;   work with the one-digit syntax is arithmetic
-			rts
+one_digit:  lda WORK            ; Only a single hex character was provided,
+            lsr                 ;   so divide the value by 16 to bring it
+            lsr                 ;   back to a one-hex-digit value.
+            lsr                 ;   ,,
+            lsr                 ;   ,,
+            dec IDX_IN          ; Back one input index. The only thing that will
+            sec                 ;   work with the one-digit syntax is arithmetic
+            rts
             
 ; Increment Working Address
 ; Get the working byte and advance working address by one
@@ -2843,11 +2859,11 @@ ch_sym:     cmp #SIGIL          ; Handle symbols
             beq handle_sym      ; ,,
             cmp #QUOTE          ; If a quote is found, modify CHRGET so that
             bne ch_token        ;   spaces are no longer filtered out
-            lda #$06			;   until the next quote. At an end quote,
-            cmp $83				;   put CHRGET back to normal.
-            bne qu_on			;   ,,
-            lda #$ef			;   ,,
-            .byte $3c			; DOP (skip byte)
+            lda #$06            ;   until the next quote. At an end quote,
+            cmp $83             ;   put CHRGET back to normal.
+            bne qu_on           ;   ,,
+            lda #$ef            ;   ,,
+            .byte $3c           ; DOP (skip byte)
 qu_on:      lda #$06            ; $0082 BEQ $0073 -> BEQ $008a
             sta $83             ; ,,
             lda #QUOTE          ; Put quote back so it can be added to buffer
@@ -4113,10 +4129,10 @@ cyc_ok:     sei
             sta $14             ;   ,,
             lda W_ADDR+1        ;   ,,
             sta $15             ;   ,,
-            lda PROC			; Make sure that SEI is still set when
-            ora #$04			;   SYS's processor flags are pulled
-            sta PROC			;   ,,
-            jsr $e12d			; SYS to set registers, run, and set memory
+            lda PROC            ; Make sure that SEI is still set when
+            ora #$04            ;   SYS's processor flags are pulled
+            sta PROC            ;   ,,
+            jsr $e12d           ; SYS to set registers, run, and set memory
             lda $9114           ; Get current cycle counter
             ldy $9115           ; ,,
             sta W_ADDR          ; Put it in working address
