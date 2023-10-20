@@ -165,8 +165,8 @@ CRSRRT      = $1d               ; Cursor right
 CRSRLF      = $9d               ; Cursor left
 RVS_ON      = $12               ; Reverse on
 RVS_OFF     = $92               ; Reverse off
-HIGH_BYTE   = ">"               ; High Byte (>)
-LOW_BYTE    = "<"               ; Low Byte (<)
+HIGH_BYTE   = $b1               ; High Byte (>)
+LOW_BYTE    = $b3               ; Low Byte (<)
 
 ; Assembler symbol table
 ; You can relocate and/or resize the symbol table by setting SYM_END,
