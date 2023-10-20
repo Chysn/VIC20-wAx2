@@ -100,6 +100,7 @@ OPEN        = $ffc0             ; Open logical file
 CLALL       = $ffe7             ; Close all files
 IOSTATUS    = $90               ; I/O Status
 CHKIN       = $ffc6             ; Define file as input
+CHKOUT		= $ffc9				; Define file as output
 CHRIN       = $ffcf             ; Get input
 CLRCHN      = $ffcc             ; Close channel
 ASCFLT      = $dcf3             ; Convert base-10 to FAC1
@@ -164,8 +165,8 @@ CRSRRT      = $1d               ; Cursor right
 CRSRLF      = $9d               ; Cursor left
 RVS_ON      = $12               ; Reverse on
 RVS_OFF     = $92               ; Reverse off
-HIGH_BYTE   = $b1               ; High Byte (>)
-LOW_BYTE    = $b3               ; Low Byte (<)
+HIGH_BYTE   = ">"               ; High Byte (>)
+LOW_BYTE    = "<"               ; Low Byte (<)
 
 ; Assembler symbol table
 ; You can relocate and/or resize the symbol table by setting SYM_END,
@@ -2054,32 +2055,40 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
             jmp PrintBuff       ;   ,,
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; FILE LISTING
+; FILE TOOL
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Disk-Tape-SD-Storage#file-listing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 QUOTE_FL    = $0247             ; Quote flag for filename
 FIRST_REC   = $0248             ; First record flag
 
-Directory:  lda INBUFFER
-			cmp #"/"
-			bne show_dir
+Directory:  lda INBUFFER		; First character after the F tool
+			beq show_dir		; Nothing, show directory
+			cmp #QUOTE			; Quote, show directory
+			beq show_dir		; ,,
+			cmp #"#"			; Octothorpe, set device
+			bne disk_cmd		; Anything else, run disk command
+			lda INBUFFER+1		; Get next character
+			jsr Char2Nyb		; Is the character a valid hex digit?
+			bcs set_dev   		; If not, device not present
+			jmp dFail			; ,,
+set_dev:	sta DEVICE			; If so, set device number
+			rts
 
 			; Execute disk command			
-	 		ldx DEVICE
+disk_cmd:	ldx DEVICE
 			ldy #15
 			lda #15
 			jsr SETLFS
 			jsr OPEN
 			ldx #15
-			jsr $ffc9
-			ldy #0
+			jsr CHKOUT
+			ldy #$ff
 -loop:		iny
 			lda INBUFFER,y
-			jsr $ffd2
+			jsr CHROUT
 			cmp #0
 			bne loop
-			ldx #15
-			jmp CLOSE			
+			jmp CLALL
 			
 			; Display directory
 show_dir:	jsr CLALL           ; Close all files
@@ -2159,7 +2168,7 @@ CharIn:     jsr CHRIN
 Match:      lda INBUFFER        ; Is the input buffer a quoted string?
             cmp #$22            ; ,,
             bne mfound          ; If not, match is OK
-            ldx #2              ; Start of haystack (output buffer)
+            ldx #3              ; Start of haystack (output buffer)
 -next       ldy #1              ; Start of needle (input buffer)
 -loop:      lda INBUFFER,y      ; Get the input buffer character
             cmp OUTBUFFER,x     ; Compare to output buffer character
@@ -3092,19 +3101,19 @@ Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
 PFNames:    .asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc LF
-            .asc "D 6502 DIS",$dd,"A ASSEMBLE",LF
-            .asc "E 6502+EXT",$dd,"G GO",LF
-            .asc "M MEMORY  ",$dd,"R REGISTER",LF
-            .asc "I TEXT    ",$dd,"B BRKPOINT",LF
-            .asc "% BINARY  ",$dd,"@ SYMBOLS",LF
-            .asc "C COMPARE ",$dd,"* SET CP",LF,$00
-HelpScr2:   .asc "H SEARCH  ",$dd,"T XFER",LF
-            .asc "L LOAD    ",$dd,$5e," STAGE",LF 
-            .asc "S SAVE    ",$dd,"= TEST",LF
-            .asc "F FILES   ",$dd,LF
-            .asc "$ HEX2DEC ",171,192,"PLUG-IN",192,192,LF
-            .asc "# DEC2HEX ",$dd,"U INVOKE",LF
-            .asc "X EXIT    ",$dd,"P INSTALL",LF,$00
+            .asc "D DISASSM",$dd,"A ASSEMBLE",LF
+            .asc "E ILLEGAL",$dd,"G GO",LF
+            .asc "M MEMORY ",$dd,"R REGISTER",LF
+            .asc "I TEXT   ",$dd,"B BRKPT",LF
+            .asc "% BINARY ",$dd,"@ SYMBOLS",LF
+            .asc "C COMPARE",$dd,"* SET CP",LF,$00
+HelpScr2:   .asc "H SEARCH ",$dd,"T XFER",LF
+            .asc "L LOAD   ",$dd,$5e," STAGE",LF 
+            .asc "S SAVE   ",$dd,"= TEST",LF
+            .asc "F FILES  ",$dd,LF
+            .asc "$ HEX2DEC",171,192,"PLUG-IN",192,192,LF
+            .asc "# DEC2HEX",$dd,"U INVOKE",LF
+            .asc "X EXIT   ",$dd,"P INSTALL",LF,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
