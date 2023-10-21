@@ -2080,8 +2080,8 @@ set_dev:    sta DEVICE          ; If so, set device number
 
             ; Execute disk command          
 disk_cmd:   ldx DEVICE
-            ldy #15
-            tya
+            lda #15
+            tay
             jsr SETLFS
             jsr OPEN
             ldx #15
@@ -3105,7 +3105,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
 Banner:     .asc LF,$b0,LF
             .asc $dd," BEIGEMAZE.COM/WAX2",LF
             .asc $dd,LF
@@ -3116,20 +3116,19 @@ Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
 PFNames:    .asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc LF
-            .asc "D DISASSM",$dd,"A ASSEMBLE",LF
-            .asc "E ILLEGAL",$dd,"G GO",LF
-            .asc "M MEMORY ",$dd,"R REGISTER",LF
-            .asc "I TEXT   ",$dd,"B BRKPT",LF
-            .asc "% BINARY ",$dd,"@ SYMBOLS",LF
-            .asc "C COMPARE",$dd,"* SET CP",LF,$00
-HelpScr2:   .asc "H SEARCH ",$dd,"T XFER",LF
-            .asc "L LOAD   ",$dd,$5e," STAGE",LF 
-            .asc "S SAVE   ",$dd,"= TEST",LF
-            .asc "F FILES  ",$dd,LF
-            .asc "$ HEX2DEC",171,192,"PLUG-IN",192,192,LF
-            .asc "# DEC2HEX",$dd,"U INVOKE",LF
-            .asc "X EXIT   ",$dd,"P INSTALL",LF,$00
+HelpScr1:   .asc "D DISASSM ",$dd,"A ASSEMBLE",LF
+            .asc "E +ILLEGAL",$dd,"G GO",LF
+            .asc "M MEMORY  ",$dd,"R REGISTER",LF
+            .asc "I TEXT    ",$dd,"B BRKPOINT",LF
+            .asc "% BINARY  ",$dd,"= TEST",LF
+            .asc "C COMPARE ",$dd,"L LOAD",LF,$00
+HelpScr2:   .asc "H SEARCH  ",$dd,"S SAVE",LF
+            .asc "T TRANSFER",$dd,"F FILE",LF 
+            .asc $5e," STAGE   ",$dd,"X EXIT",LF
+            .asc "@ SYMBOLS ",$dd,LF
+            .asc "* SET CP  ",171,192,"PLUG-IN",192,192,LF
+            .asc "$ HEX2DEC ",$dd,"U INVOKE",LF
+            .asc "# DEC2HEX ",$dd,"P INSTALL",LF,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9

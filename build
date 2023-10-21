@@ -6,10 +6,10 @@ cat ./vic/wax2.bin ./src/padding.bin | head -c 8192 > ./vic/wax2.eep
 cp ./vic/wax2.prg /Users/jej/personal/vic/wax2
 
 ## Make CRT file
-/Applications/vice-x86-64-gtk3-3.6.1/bin/cartconv -t vic20 -i ./vic/wax2.eep -o ./vic/wax2.crt -l 0xa000
+/Applications/vice-x86-64-gtk3-3.7.1/bin/cartconv -t vic20 -i ./vic/wax2.eep -o ./vic/wax2.crt -l 0xa000
 
 ## Build test suite
-/Applications/vice-x86-64-gtk3-3.6.1/bin/petcat -w2 -o vic/wax2test.prg -- src/wax2test.bas
+/Applications/vice-x86-64-gtk3-3.7.1/bin/petcat -w2 -o vic/wax2test.prg -- src/wax2test.bas
 cp ./vic/wax2test.prg /Users/jej/personal/vic/
 
 ls -la ./vic/wax2.bin
