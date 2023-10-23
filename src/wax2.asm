@@ -2127,15 +2127,14 @@ newline:    jsr ISCNTC          ; Exit if STOP key is pressed
             bne loop            ;   ,,
 -loop:      jsr CharIn          ; Get next character from line
             beq EOL             ; 0 indicates end-of-line
-            cmp #$22            ; Is character a quotation mark?
+            cmp #QUOTE          ; Is character a quotation mark?
             bne proc_name       ; If not, go process the name
             lda QUOTE_FL        ; If it's the first quote in this line, add
             bne set_quote       ;   the prefix and the starting quote mark
             jsr AddrPrefix      ;   ,,
-            jsr DQuote          ;   ,,
+            lda #QUOTE
 set_quote:  sec                 ; Set the quote flag to either %10000000 or
             ror QUOTE_FL        ;   %11000000
-            bcc loop            ; Go back for next character
 proc_name:  bit QUOTE_FL        ; Check the quote state
             bvs loop            ; If bit 6 is set, the quote is finished
             bpl loop            ; If bit 7 is clear, the quote hasn't started
@@ -2754,7 +2753,7 @@ find_var:   lda $46             ; The variable name is OK. Add bit 7 if a
             bne mov2fac         ; ,,
 add_hexsig: lda IDX_IN          ; The hex sigil $ should only be added when
             cmp #7              ;   applied to an instruction operand, like
-            beq sig             ;         JSR $nnnn or LDA ($nn, X)
+            beq sig             ;     JSR $nnnn or LDA ($nn, X) or LDA #$nn
             cmp #8				;   which is the 7th or 8th position in the
             bne mov2fac			;   buffer. For anything else, like arithmetic,
 sig:        lda #"$"            ;   or the target address, the sigil is not
