@@ -815,14 +815,14 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             sta $7a             ;   freak out
             pla                 ;   ,,
             sta $7b             ;   ,,
+            cpy #10				; If the decimal operand was 10 or more, advance
+            bcc insert_hex		;   the index to account for the second digit.
             inc IDX_IN          ; Advance the index to the next location to
             cpy #100            ;   check for + or -. If the decimal operand was
             bcc insert_hex      ;   100 or more, advance the index again to
             inc IDX_IN          ;   account for the third digit.
             ; Fall through to insert_hex
-insert_hex: lda IDX_IN          ; Save starting index for arithmetic
-            sta PREV_IDX        ; ,,
-            jsr Arithmetic      ; Perform arithmetic on operand and code
+insert_hex: jsr Arithmetic      ; Perform arithmetic on operand and code
             jsr ResetOut        ; Store the hex value of the operand after the
             sta INBUFFER+11     ;   #, so it can be matched by Hypotest.
             lda #"$"            ;   End it with 0 as a line delimiter
@@ -874,8 +874,8 @@ Arithmetic: jsr CharGet         ; Check character after operand
             cmp #"-"            ; Perform subtraction
             beq sub_op          ; ,,
 getop_r:    rts
-sub_op:     jsr HexGet
-            bcc getop_r
+sub_op:		jsr HexGet
+			bcc getop_r
             sta TEMP_CALC
             sec
             lda OPERAND
@@ -885,22 +885,17 @@ sub_op:     jsr HexGet
             dec OPERAND+1
             jmp repl_hex
 add_op:     jsr HexGet
-            bcc getop_r         ; Return if invalid hex digit
+			bcc getop_r
             clc                 ; Add the number to the operand
             adc OPERAND         ; ,,
             sta OPERAND         ; ,,
             bcc repl_hex        ; ,,
             inc OPERAND+1       ; ,,
 repl_hex:   ldx IDX_IN
-            dex
-            dex
-            dex
             lda #1
-            sta INBUFFER,x
-            inx
-            sta INBUFFER,x
-            inx
-            sta INBUFFER,x
+            sta INBUFFER-3,x
+            sta INBUFFER-2,x
+            sta INBUFFER-1,x
             jsr ResetOut        ; Will be using the output buffer as tmp hex
             ldx PREV_IDX        ; Starting index of instruction operand
             stx IDX_IN
@@ -920,7 +915,7 @@ CopyOp:     lda OUTBUFFER       ; Get first hex digit of output buffer
             jsr AddInput        ;   Copy it to input
             lda OUTBUFFER+1     ; Get second hex digit of output buffer
             jmp AddInput        ;   Copy it to input
-           
+			           
 ; Hypothesis Test
 ; Search through the language table for each opcode and disassemble it using
 ; the opcode provided for the candidate instruction. If there's a match, then
@@ -2757,11 +2752,13 @@ find_var:   lda $46             ; The variable name is OK. Add bit 7 if a
             beq add_hexsig      ; ,,
             cmp #T_ASM_AL       ; Same with assembly alias
             bne mov2fac         ; ,,
-add_hexsig: lda IDX_IN          ; If the target address is being inter-
-            cmp #4              ;   polated, then don't add the $
-            bcc mov2fac         ;   ,,
-            lda #"$"            ;   ,,
-            jsr AddInput        ;   ,,              
+add_hexsig: lda IDX_IN          ; The hex sigil $ should only be added when
+            cmp #7              ;   applied to an instruction operand, like
+            beq sig             ;         JSR $nnnn or LDA ($nn, X)
+            cmp #8				;   which is the 7th or 8th position in the
+            bne mov2fac			;   buffer. For anything else, like arithmetic,
+sig:        lda #"$"            ;   or the target address, the sigil is not
+            jsr AddInput        ;   inserted.
 mov2fac:    lda $47             ; Move found variable to FAC
             ldy $48             ; ,,
             jsr LODFAC          ; ,,
