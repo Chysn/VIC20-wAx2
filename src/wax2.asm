@@ -2065,15 +2065,16 @@ st_range:   jsr ResetOut        ; Show the start and end pages of the current
 QUOTE_FL    = $0247             ; Quote flag for filename
 FIRST_REC   = $0248             ; First record flag
 
-Directory:  lda INBUFFER        ; First character after the F tool
+File:       lda INBUFFER        ; First character after the F tool
             beq show_dir        ; Nothing, show directory
             cmp #QUOTE          ; Quote, show directory
             beq show_dir        ; ,,
             cmp #"#"            ; Octothorpe, set device
             bne disk_cmd        ; Anything else, run disk command
-            lda INBUFFER+1      ; Get next character
-            jsr Char2Nyb        ; Is the character a valid hex digit?
-            bcs set_dev         ; If not, device not present
+            lda #1				; Get one- or two-digit hex number for the
+            sta IDX_IN			;   device number
+            jsr HexGet			;   ,,
+            bcs set_dev         ; If not valid, ?DEVICE NOT PRESENT
             jmp dFail           ; ,,
 set_dev:    sta DEVICE          ; If so, set device number
             rts
@@ -2092,27 +2093,16 @@ disk_cmd:   ldx DEVICE
             jsr CHROUT
             iny 
             bne loop
-show_st:    jsr CLRCHN          ; Commands work for both systems, but
-            lda #15             ; do not get reported correctly for
-            jmp CLOSE           ; either. Failures reported as OK in VDrive
-            
-            ;jsr CLALL          ; Works for TDE, all reporting OK, but
-                                ; reports syntax errors for VDrive
-                                ; ,,
-                                        
-            ;lda #15            ; Works for VDrive, all reporting OK, but
-            ;jsr CLOSE          ; commands don't get executed for 
-            ;jsr CLRCHN         ; TDE at all
-            
-            ;lda DEVICE
-            ;jsr TALK
-            ;lda #$6f
-            ;jsr TALKSA     
--loop:      ;jsr IECIN
-            ;jsr $e742
-            ;cmp #$0d
-            ;bne loop    
-            ;jmp UNTALK
+show_st:    jsr CLRCHN          ; Execute command         
+            ldx #15				; Show command status
+            jsr CHKIN			;   Set the channel for command status input
+-loop:      jsr CHRIN
+            jsr CHROUT			; OK to use CHROUT, input is back to normal
+            cmp #$0d			; CR terminates status
+            bne loop			; ,,
+            jsr CLRCHN			; Close command channel out
+            lda #15				; ,,
+            jmp CLOSE			; ,,
             
             ; Display directory
 show_dir:   lsr FIRST_REC       ; Clear first record flag
@@ -3072,13 +3062,13 @@ ToolAddr_L: .byte <List-1,<Assemble-1,<List-1,<Register-1,<Go-1
             .byte <SetBreak-1,<Tester-1,<MemSave-1,<MemLoad-1,<List-1
             .byte <List-1,<Search-1,<MemCopy-1,<Hex2Base10-1,<Base102Hex-1
             .byte <SetCP-1,<BASICStage-1,<PlugIn-1
-            .byte <Assemble-1,<Register-1,<Directory-1,<List-1,<Compare-1
+            .byte <Assemble-1,<Register-1,<File-1,<List-1,<Compare-1
             .byte <Help-1,<PlugMenu-1,<Symbols-1,<DEF-1
 ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Go-1
             .byte >SetBreak-1,>Tester-1,>MemSave-1,>MemLoad-1,>List-1
             .byte >List-1,>Search-1,>MemCopy-1,>Hex2Base10-1,>Base102Hex-1
             .byte >SetCP-1,>BASICStage-1,>PlugIn-1
-            .byte >Assemble-1,>Register-1,>Directory-1,>List-1,>Compare-1
+            .byte >Assemble-1,>Register-1,>File-1,>List-1,>Compare-1
             .byte >Help-1,>PlugMenu-1,>Symbols-1,>DEF-1
 
 ; Plug-In Menu Data           
@@ -3116,19 +3106,19 @@ Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
 PFNames:    .asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc "D DISASSM ",$dd,"A ASSEMBLE",LF
-            .asc "E +ILLEGAL",$dd,"G GO",LF
-            .asc "M MEMORY  ",$dd,"R REGISTER",LF
-            .asc "I TEXT    ",$dd,"B BRKPOINT",LF
-            .asc "% BINARY  ",$dd,"= TEST",LF
-            .asc "C COMPARE ",$dd,"L LOAD",LF,$00
-HelpScr2:   .asc "H SEARCH  ",$dd,"S SAVE",LF
-            .asc "T TRANSFER",$dd,"F FILE",LF 
-            .asc $5e," STAGE   ",$dd,"X EXIT",LF
-            .asc "@ SYMBOLS ",$dd,LF
-            .asc "* SET CP  ",171,192,"PLUG-IN",192,192,LF
-            .asc "$ HEX2DEC ",$dd,"U INVOKE",LF
-            .asc "# DEC2HEX ",$dd,"P INSTALL",LF,$00
+HelpScr1:   .asc "D DISASSM",$dd,"A ASSEMBLE",LF
+            .asc "E ILLEGAL",$dd,"G GO",LF
+            .asc "M MEMORY ",$dd,"R REGISTER",LF
+            .asc "I TEXT   ",$dd,"B BRKPOINT",LF
+            .asc "% BINARY ",$dd,"= TEST",LF
+            .asc "C COMPARE",$dd,"L LOAD",LF,$00
+HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",LF
+            .asc "T XFER   ",$dd,"F FILE",LF 
+            .asc $5e," STAGE  ",$dd,"X EXIT",LF
+            .asc "@ SYMBOLS",$dd,LF
+            .asc "* SET CP ",171,192,"PLUG-IN",192,192,LF
+            .asc "$ HEX2DEC",$dd,"U INVOKE",LF
+            .asc "# DEC2HEX",$dd,"P INSTALL",LF,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
