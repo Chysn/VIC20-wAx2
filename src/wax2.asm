@@ -2125,24 +2125,24 @@ newline:    jsr ISCNTC          ; Exit if STOP key is pressed
 -loop:      jsr CharIn          ;   line number
             dex                 ;   ,,
             bne loop            ;   ,,
--loop:      jsr CharIn          ; Get next character from line
+-next_char: jsr CharIn          ; Get next character from line
             beq EOL             ; 0 indicates end-of-line
-            cmp #QUOTE          ; Is character a quotation mark?
-            bne proc_name       ; If not, go process the name
-            lda QUOTE_FL        ; If it's the first quote in this line, add
-            bne set_quote       ;   the prefix and the starting quote mark
-            jsr AddrPrefix      ;   ,,
-            lda #QUOTE
-set_quote:  sec                 ; Set the quote flag to either %10000000 or
-            ror QUOTE_FL        ;   %11000000
-proc_name:  bit QUOTE_FL        ; Check the quote state
-            bvs loop            ; If bit 6 is set, the quote is finished
-            bpl loop            ; If bit 7 is clear, the quote hasn't started
-            jsr CharOut         ; If quote has started but not finished, it's
-            jmp loop            ;   part of a name
+            cmp #QUOTE 			; If this is a quote, handle the quote mode.
+            beq handle_qu		;   There are three quote modes... Unstarted,
+            bit QUOTE_FL		;   Started, and Done.
+			bvs	next_char		; Checks for quote mode Done
+			bpl next_char		; Checks for quote mode Unstarted
+dir_char:   jsr CharOut			; Quote mode is Started, so add character
+			jmp next_char		; ,,
+handle_qu:  sec 				; Handle the quote mode by shifting 1 into
+			ror QUOTE_FL		;   the high bit.
+			bit QUOTE_FL		; 00000000 is Unstarted. 10000000 is Started
+			bvs get_qu			;   and 11000000 is Done
+			jsr AddrPrefix		; If Started, add the prefix
+get_qu:	    lda #QUOTE			; Feed a quote back to the directory name print
+			bne dir_char		;   it to the buffer
 EOL:        bit QUOTE_FL        ; If a quote hasn't been finished, end of dir
             bvc EOF             ; ,,
-            jsr DQuote          ; Add the ending quote mark and CR to the buffer
             bit FIRST_REC       ; Is this the first record?
             bpl subseq          ; If so, skip the display
             jsr Match           ; Perform a text match, if necessary
