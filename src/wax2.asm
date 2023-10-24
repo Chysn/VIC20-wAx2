@@ -163,7 +163,7 @@ DEF_TOKEN   = $96               ; DEF token, in case user enters .DEFnn
 TABLE_END   = $f2               ; Indicates the end of mnemonic table
 XTABLE_END  = $d2               ; End of extended instruction table
 QUOTE       = $22               ; Quote character
-LF          = $0d               ; Linefeed
+CR          = $0d               ; Carriage Return
 CRSRUP      = $91               ; Cursor up
 CRSRRT      = $1d               ; Cursor right
 CRSRLF      = $9d               ; Cursor left
@@ -356,7 +356,7 @@ SyntaxErr:  jsr DirectMode      ; In a BASIC program, respond to illegal
             jmp SYNTAX_ERR      ;   ,,
 cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
             jsr CHROUT          ;   with a question mark
-            lda #LF             ;   ,,
+            lda #CR             ;   ,,
             jsr CHROUT          ;   ,,
             jmp Return
 
@@ -1358,7 +1358,7 @@ MemSave:    bcc save_err        ; Bail if the address is no good
             ldy RANGE_END+1     ; ,,
             jsr SAVE            ; ,,
             bcs FileError
-            jmp Linefeed
+            jmp CReturn 
 save_err:   jmp SyntaxErr  
 
 ; Show System Disk Error            
@@ -1397,7 +1397,7 @@ cassette:   ldy #$01            ; ,, (load to header location)
             beq show_range      ;   direct mode
 load_r:     rts
 show_range: jsr ResetOut
-            jsr Linefeed
+            jsr CReturn 
             jsr AddrPrefix      ; Show address prefix with prompt
             ldx DEVICE          ; If the device numbr is 1, skip the start/end
             cpx #$01            ;   display
@@ -1624,7 +1624,7 @@ two_bytes:  lda #WEDGE
             ldx W_ADDR          ; Set up PRTFIX for base-10 integer output
             lda W_ADDR+1        ; ,,
             jsr PRTFIX          ; ,,
-            jsr Linefeed
+            jsr CReturn 
 hex_conv_r: rts            
             
 ; Base-10 to Hex
@@ -2130,10 +2130,18 @@ newline:    jsr ISCNTC          ; Exit if STOP key is pressed
             cmp #QUOTE 			; If this is a quote, handle the quote mode.
             beq handle_qu		;   There are three quote modes... Unstarted,
             bit QUOTE_FL		;   Started, and Done.
-			bvs	next_char		; Checks for quote mode Done
+			bvs	post_name		; Checks for quote mode Done
 			bpl next_char		; Checks for quote mode Unstarted
 dir_char:   jsr CharOut			; Quote mode is Started, so add character
 			jmp next_char		; ,,
+post_name:	cmp #"D"			; The file type is after the file name (PRG,
+			bne next_char		;   etc.). If a D is found, show it in reverse
+			ldy IDX_OUT
+			lda #RVS_OFF
+			sta OUTBUFFER-1,y
+			lda #RVS_ON
+			sta OUTBUFFER+3
+			bne dir_char
 handle_qu:  sec 				; Handle the quote mode by shifting 1 into
 			ror QUOTE_FL		;   the high bit.
 			bit QUOTE_FL		; 00000000 is Unstarted. 10000000 is Started
@@ -2373,7 +2381,7 @@ ShowUsage:  plp                 ; Pop what was pushed in the main part
             bcc show_pr         ;   ,,
             iny                 ;   ,,
 show_pr:    jsr PrintStr        ;   ,,
-            lda #LF
+            lda #CR
             jmp CHROUT
                 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2943,12 +2951,14 @@ print_done: lda #RVS_OFF        ; Reverse off after each line
             jsr PLOT            ;   the remainder of the line with spaces,
             lda #" "            ;   so that if the user cursors up to
 -loop:      cpy #21             ;   execute a tool, the data send to the
-            bcs Linefeed        ;   screen remains clean
+            bcs CReturn         ;   screen remains clean
             jsr CHROUT          ;   ,,
             iny                 ;   ,,
             bne loop            ;   ,,
 
-Linefeed:   lda #LF
+; Carriage return
+; To output, not buffer
+CReturn:    lda #CR
             jmp CHROUT             
            
 ; Print String
@@ -3070,13 +3080,13 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Go-1
 ; Plug-In Menu Data           
 MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CYtxt,<BAtxt,<WAtxt
 MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CYtxt,>BAtxt,>WAtxt
-MEtxt:      .asc LF,".P ",QUOTE,"MEM CONF",QUOTE,$00
-REtxt:      .asc LF,".P ",QUOTE,"RELOC",QUOTE,$00
-DEtxt:      .asc LF,".P ",QUOTE,"DEBUG",QUOTE,$00
-MLtxt:      .asc LF,".P ",QUOTE,"ML2BAS",QUOTE,$00
-CYtxt:      .asc LF,".P ",QUOTE,"CYCLES",QUOTE,$00
-BAtxt:      .asc LF,".P ",QUOTE,"BAS AID",QUOTE,$00
-WAtxt:      .asc LF,".P ",QUOTE,"WAXFER",QUOTE,LF,$00
+MEtxt:      .asc CR,".P ",QUOTE,"MEM CONF",QUOTE,$00
+REtxt:      .asc CR,".P ",QUOTE,"RELOC",QUOTE,$00
+DEtxt:      .asc CR,".P ",QUOTE,"DEBUG",QUOTE,$00
+MLtxt:      .asc CR,".P ",QUOTE,"ML2BAS",QUOTE,$00
+CYtxt:      .asc CR,".P ",QUOTE,"CYCLES",QUOTE,$00
+BAtxt:      .asc CR,".P ",QUOTE,"BAS AID",QUOTE,$00
+WAtxt:      .asc CR,".P ",QUOTE,"WAXFER",QUOTE,CR,$00
             
 MenuChar1:  .asc "M","R","D","M","C","B","W"
 MenuChar2:  .asc "E","E","E","L","Y","A","A"
@@ -3091,30 +3101,29 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",LF,LF,$00
-Banner:     .asc LF,$b0,LF
-            .asc $dd," BEIGEMAZE.COM/WAX2",LF
-            .asc $dd,LF
-            .asc $dd," V2.1       .? HELP",LF
-            .asc $ad,LF,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+Banner:     .asc CR,$b0,CR
+            .asc $dd,"BEIGEMAZE.COM/WAX2",CR
+            .asc $dd,"V2.1       .? HELP",CR
+            .asc $ad,CR,$00
             
-Registers:  .asc LF,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
+Registers:  .asc CR,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
 PFNames:    .asc "C","Z",$01,"D",$01,$01,"V","N"            
-BreakMsg:   .asc LF,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc "D DISASSM",$dd,"A ASSEMBLE",LF
-            .asc "E ILLEGAL",$dd,"G GO",LF
-            .asc "M MEMORY ",$dd,"R REGISTER",LF
-            .asc "I TEXT   ",$dd,"B BRKPOINT",LF
-            .asc "% BINARY ",$dd,"= TEST",LF
-            .asc "C COMPARE",$dd,"L LOAD",LF,$00
-HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",LF
-            .asc "T XFER   ",$dd,"F FILE",LF 
-            .asc $5e," STAGE  ",$dd,"X EXIT",LF
-            .asc "@ SYMBOLS",$dd,LF
-            .asc "* SET CP ",171,192,"PLUG-IN",192,192,LF
-            .asc "$ HEX2DEC",$dd,"U INVOKE",LF
-            .asc "# DEC2HEX",$dd,"P INSTALL",LF,$00
+BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
+HelpScr1:   .asc "D DISASSM",$dd,"A ASSEMBLE",CR
+            .asc "E ILLEGAL",$dd,"G GO",CR
+            .asc "M MEMORY ",$dd,"R REGISTER",CR
+            .asc "I TEXT   ",$dd,"B BRKPT",CR
+            .asc "% BINARY ",$dd,"= TEST",CR
+            .asc "C COMPARE",$dd,"L LOAD",CR,$00
+HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
+            .asc "T XFER   ",$dd,"F FILE",CR 
+            .asc $5e," STAGE  ",$dd,"X EXIT",CR
+            .asc "@ SYMBOLS",$dd,CR
+            .asc "* SET CP ",171,192,"PLUG-IN",192,192,CR
+            .asc "$ HEX2DEC",$dd,"U INVOKE",CR
+            .asc "# DEC2HEX",$dd,"P INSTALL",CR,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
@@ -3642,7 +3651,7 @@ OFFSET      = $024b             ; Offset (C_PT - W_ADDR, 2 bytes)
             ; Parameter collection
 uRelocate:  jmp ph_reloc
             ; Command template
-            .asc $00,".U FROM TO TARGET",$00
+            .asc $00,".U FROM TO TGT",$00
 ph_reloc:   bcs okay            ; Error if invalid first argument (source start)
 error:      jmp SyntaxErr       ; ?SYNTAX ERROR, warm start
 okay:       jsr HexGet          ; Get high byte of source end
@@ -4135,7 +4144,7 @@ cyc_ok:     sei
             bne cyc_r           ;   ,,
 show_cyc:   jsr $dddd           ;   Convert FAC1 to string
             jsr $cb1e           ;   Print it
-            jmp Linefeed        ;   Then linefeed
+            jmp CReturn         ;   Then carriage return
 cyc_r:      rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
