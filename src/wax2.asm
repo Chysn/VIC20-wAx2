@@ -2137,12 +2137,12 @@ dir_char:   jsr CharOut         ; Quote mode is Started, so add character
             jmp next_char       ; ,,
 post_name:  cmp #"D"            ; The file type is after the file name (PRG,
             bne next_char       ;   etc.). If a D is found, show it in reverse
-            ldy IDX_OUT			;   text by replacing the first quote mark with
-            lda #0				;   Reverse On, and the last quote mark with
-            sta OUTBUFFER-1,y	;   the line terminator.
-            lda #RVS_ON			;   ,,
-            sta OUTBUFFER+3		;   ,,
-            bne dir_char		;   ,,
+            ldy IDX_OUT         ;   text by replacing the first quote mark with
+            lda #"/"            ;   Reverse On, and the last quote mark with
+            sta OUTBUFFER-1,y   ;   the line terminator.
+            lda #RVS_ON         ;   ,,
+            sta OUTBUFFER+3     ;   ,,
+            bne dir_char        ;   ,,
 handle_qu:  sec                 ; Handle the quote mode by shifting 1 into
             ror QUOTE_FL        ;   the high bit.
             bit QUOTE_FL        ; 00000000 is Unstarted. 10000000 is Started
