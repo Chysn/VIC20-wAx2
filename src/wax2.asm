@@ -1363,7 +1363,8 @@ FileError:  bne show_error      ; Error in A will be $00 if a cassette save is
 show_error: jmp ERROR_NO 
             
 ; Memory Load
-MemLoad:    jsr ResetIn         ; Reset the input buffer because there's no addr
+MemLoad:    jsr DropDown		; Find the bottom of a file list, for example
+			jsr ResetIn         ; Reset the input buffer because there's no addr
             jsr FileSetup       ; SETLFS, get filename length, etc.
             ldx #<INBUFFER+1    ; Set location of filename
             ldy #>INBUFFER+1    ; ,,
@@ -1390,8 +1391,7 @@ cassette:   ldy #$01            ; ,, (load to header location)
             jsr LOAD            
             bcs FileError
             jsr DirectMode      ; Show the loaded range if the load is done in
-            beq show_range      ;   direct mode
-load_r:     rts
+            bne file_r          ;   direct mode
 show_range: jsr ResetOut
             jsr CReturn 
             jsr AddrPrefix      ; Show address prefix with prompt
@@ -1429,7 +1429,7 @@ FileSetup:  jsr ClearBP         ; Clear breakpoint
             iny
             bne loop            
 setup_r:    tya
-            rts
+file_r:     rts
 setup_err:  jmp save_err
             
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -1448,18 +1448,14 @@ s_addr_ok:  lda INBUFFER+4      ; Or nothing to search
             jsr ResetOut        ; Reset output
             lda INBUFFER+4      ; What kind of search is this?
             cmp #":"            ;   If a hex search, do setup      
-            bne s_ch_quote      ;   ,,
-            jmp SetupHex        ;   ,,
-s_ch_quote: cmp #QUOTE          ;   If a string search, do setup
             bne s_ch_scc        ;   ,,
-            jmp SetupText       ;   ,,
+            jmp SetupHex        ;   ,,
 s_ch_scc:   cmp #"/"            ;   If a screen code search, do setup
-            bne next_srch       ;   ,,
+            bne s_ch_quote      ;   ,,
             inc WORK+1          ;   ,,
-            lda INBUFFER+5      ;   ,, Quote must immediately follow / for
-            cmp #QUOTE          ;   ,, a screen code search
-            bne search_err      ;   ,,
-            jmp SetupText       ;   ,,
+            lda INBUFFER+5      ;   ,, Quote must immediately follow /
+s_ch_quote: cmp #QUOTE          ;   If a string search, do setup
+            beq SetupText       ;   ,,
 next_srch:  jsr ISCNTC          ; Check for STOP key
             beq srch_stop       ;   and finish search early if pressed
             lda W_ADDR+1        ; Store the working address high byte for
@@ -1488,48 +1484,8 @@ srch_stop:  jsr ResetOut        ; Start a new output buffer to indicate the
             jsr Space           ;   followed by a space
             jsr ShowAddr        ;   ,,
             jsr PrintBuff       ;   ,,
-            jsr Addr2CP         ; Update Command Pointer
-srch_r:     rts               
-            
-; Memory Search
-; Compare a sequence of bytes in memory to the input. If there's a match,
-; indicate the starting address of the match.            
-MemSearch:  ldy WORK+1          ; Start index for search
--loop:      lda INBUFFER+5,y    ; Get character to search
-            ldx WORK+1
-            beq no_scr_c
-            jsr PETtoScr        ; Perform PETSCII to screen code conversion
-no_scr_c:   cmp (W_ADDR),y      ; Do the compare
-            bne no_match        ; If this doesn't match, need to move on
-            iny                 ; Otherwise, check for additional matches
-            cpy SEARCH_S
-            bne loop
-            beq mem_found
-no_match:   jmp next_check
-mem_found:  jsr ResetOut
-            jsr AddrPrefix
-            lda W_ADDR
-            clc
-            adc WORK+1
-            sta W_ADDR
-            bcc no_scr_c2
-            inc W_ADDR+1
-no_scr_c2:  jsr ShowAddr
-            jsr PrintBuff
-next_check: jsr IncAddr  
-            jmp check_end                      
+            jmp Addr2CP         ; Update Command Pointer
 
-; Setup Text Search
-SetupText:  ldy WORK+1
--loop:      lda INBUFFER+5,y
-            cmp #QUOTE
-            beq su_txt_r
-            iny
-            cpy #17
-            bne loop
-su_txt_r:   sty SEARCH_S
-            jmp next_srch
-            
 ; Setup Hex Search
 ; by converting a hex search into a memory search. Transcribe hex characters
 ; into the input as values.       
@@ -1540,28 +1496,65 @@ SetupHex:   lda #$05            ; Place the input index after the colon so
             bcc setup_done      ; If not, the transcription is done
             sta INBUFFER+5,y    ; Store the byte in the buffer
             iny                 ; Grab up to eight bytes
-            cpy #$08            ;   ,,
             bne loop
 setup_done: sty SEARCH_S        ; Set search size
-            jmp next_srch    
- 
+            jmp next_srch  
+            
+; Setup Text Search
+SetupText:  ldy WORK+1
+-loop:      lda INBUFFER+5,y
+            cmp #QUOTE
+            beq su_txt_r
+            iny
+            cpy #17
+            bne loop
+su_txt_r:   sty SEARCH_S
+            jmp next_srch                
+            
+; Memory Search
+; Compare a sequence of bytes in memory to the input. If there's a match,
+; indicate the starting address of the match.            
+MemSearch:  ldy WORK+1          ; Start index for search
+-loop:      lda INBUFFER+5,y    ; Get character to search
+            ldx WORK+1			; If start index is 1, it means we're ALSO
+            beq no_scr_c		;   looking for screen codes (b/c of the /)
+            jsr PETtoScr        ; Perform PETSCII to screen code conversion
+no_scr_c:   cmp (W_ADDR),y      ; Do the compare
+            bne no_match        ; If this doesn't match, need to move on
+            iny                 ; Otherwise, check for additional matches
+            cpy SEARCH_S		; Have we reached the search size?
+            bne loop			; ,,
+            beq mem_found		; If SEARCH_S matches, show found address
+no_match:   jmp next_check		; If no match, increment address, try again
+mem_found:  jsr ResetOut		; Show the match address on the screen
+            jsr AddrPrefix		; ,, Use the standard search prefix
+            lda W_ADDR			; ,,
+            clc					; Add the screen code offset
+            adc WORK+1			; ,,
+            sta W_ADDR			; ,,
+            bcc no_scr_c2		; ,,
+            inc W_ADDR+1		; ,,
+no_scr_c2:  jsr ShowAddr		; Show the address where the query was
+            jsr PrintBuff		;   found.
+next_check: jsr IncAddr  		; Increment the search address.
+            jmp check_end                      
+             
 ; Code Search
 ; Disassemble code from the working address. If the disassembly at that
 ; address matches the input, indicate the starting address of the match.
 CodeSearch: jsr ResetOut
             jsr AddrPrefix+3    ; Show address display convention, w/o prompt
-            jsr ShowAddr
-            lda #0
-            jsr CharOut
+            jsr ShowAddr		; ,,
+            lda #0				; Set delimiter
+            jsr CharOut			; ,,
             jsr Disasm          ; Disassmble the code at the working address
             ldx #7              ; Change output offset for space, and enter
             jsr IsMatch+2       ;   IsMatch after its LDX. If there's a match,
-            bcs code_found      ;   show the code
-            jmp check_end
+            bcc ch_end_a        ;   show the code
 code_found: lda #WEDGE
             jsr CHROUT
-            jsr PrintBuff       ; Print address and disassembly   
-            jmp check_end       ; Go back for more      
+            jsr PrintBuff       ; Print address  
+ch_end_a:   jmp check_end       ; Go back for more      
       
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; TRANSFER AND FILL
@@ -2076,19 +2069,18 @@ disk_cmd:   ldx DEVICE          ; Get current device number
             tay                 ; ,,
             jsr SETLFS          ; Set logical file
             jsr OPEN            ; And open it
-            ldx #15             ; Redirect output
+            ldx #15             ; Redirect CHROUT to command
             jsr CHKOUT          ; ,,
             lda #"I"            ; Send initialize command to make sure
             jsr CHROUT          ;   status is updated
             jsr CLRCHN          ;   ,,
-            ldx #15             ; Re-open the redirect
+            ldx #15             ; Re-redirect CHROUT to command
             jsr CHKOUT          ; ,,
-            ldy #0              ; Now send the specified commmand from the
--loop:      lda INBUFFER,y      ;   input buffer
-            beq show_st         ;   ,,
-            jsr CHROUT          ;   ,,
+            ldy #0              ; Now send the specified command from the
+-loop:      lda INBUFFER,y      ;   input buffer, terminated by 0
             iny                 ;   ,,
-            bne loop            ;   ,,
+            jsr CHROUT          ;   ,,
+            bne loop            ;   ,, (CHROUT sets Z when A=0)
 show_st:    jsr CLRCHN          ; Execute command         
             ldx #15             ; Show command status
             jsr CHKIN           ;   Set the channel for command status input
@@ -2448,13 +2440,7 @@ cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
             sta USER_VECT+1     ;   ,,
             jsr DirectMode      ; Do not display usage in program mode
             bne menu_r          ; ,,
-            ldx #0              ; Get character at screen position
--loop:      lda ($d1,x)         ; ,,
-            cmp #WEDGE          ; Is it a . character?
-            bne desc_r          ; If not, done positioning cursor
-            lda #$11            ; Drop down one line
-            jsr $ffd2           ; ,,
-            jmp loop            ; And look again
+            jsr DropDown        ;
 desc_r:     jmp ShowUsage+1     ; Show new tool's usage, but skip the PLP     
 menu_r:     rts
                         
@@ -3052,6 +3038,17 @@ b_c0:       and #$7f
             rts
 pi:         lda #$5E
             rts   
+            
+; Drop to Blank
+; Search for the last prompt character
+DropDown:   ldx #0              ; Get character at screen position
+-loop:      lda ($d1,x)         ; ,,
+            cmp #WEDGE          ; Is it a . character?
+            bne dd_r            ; If not, done positioning cursor
+            lda #$11            ; Drop down one line
+            jsr $ffd2           ; ,,
+            bne loop            ; And look again
+dd_r:       rts
                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; DATA
