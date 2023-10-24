@@ -607,8 +607,7 @@ abs_ind:    jsr Comma           ; This is an indexed addressing mode, so
 ; https://github.com/Chysn/VIC20-wAx2/wiki/Memory-Editor
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Memory Editor               
-MemEdit:    sta TOOL_CHR        ; Update tool character for Prompt
-start_mem:  ldy #$0             ; Byte index
+MemEdit:    ldy #$0             ; Byte index
             sei                 ; Stop interrupts during memory update
 -loop:      jsr HexGet   
             bcc edit_exit       ; Bail out on the first non-hex byte
@@ -639,8 +638,6 @@ ScrEdit:    jsr CharGet         ; For a screen code editor, the character
 ; If the input starts with a quote, add characters until we reach another
 ; quote, or 0
 TextEdit:   lsr CHARAC
-            lda #0              ; Update tool character for prompt. It just
-            sta TOOL_CHR        ;   needs to not be T_ASM
             ldy #$00            ; Y=Data Index
 -loop:      jsr CharGet
             beq edit_exit       ; Return to MemEditor if 0
@@ -667,8 +664,7 @@ skip_conv:  sta (W_ADDR),y      ; Populate data
             
 ; Binary Editor
 ; If the input starts with a %, get one binary byte and store it in memory                   
-BinaryEdit: sta TOOL_CHR        ; Update tool character for prompt
-            jsr BinaryByte      ; Get 8 binary bits
+BinaryEdit: jsr BinaryByte      ; Get 8 binary bits
             ;bcc edit_r         ; If invalid, errors at BinaryByte
             ldy #$00            ; Store the valid byte to memory
             sta (W_ADDR),y      ; ,,
@@ -815,8 +811,8 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             sta $7a             ;   freak out
             pla                 ;   ,,
             sta $7b             ;   ,,
-            cpy #10				; If the decimal operand was 10 or more, advance
-            bcc insert_hex		;   the index to account for the second digit.
+            cpy #10             ; If the decimal operand was 10 or more, advance
+            bcc insert_hex      ;   the index to account for the second digit.
             inc IDX_IN          ; Advance the index to the next location to
             cpy #100            ;   check for + or -. If the decimal operand was
             bcc insert_hex      ;   100 or more, advance the index again to
@@ -874,8 +870,8 @@ Arithmetic: jsr CharGet         ; Check character after operand
             cmp #"-"            ; Perform subtraction
             beq sub_op          ; ,,
 getop_r:    rts
-sub_op:		jsr HexGet
-			bcc getop_r
+sub_op:     jsr HexGet
+            bcc getop_r
             sta TEMP_CALC
             sec
             lda OPERAND
@@ -885,7 +881,7 @@ sub_op:		jsr HexGet
             dec OPERAND+1
             jmp repl_hex
 add_op:     jsr HexGet
-			bcc getop_r
+            bcc getop_r
             clc                 ; Add the number to the operand
             adc OPERAND         ; ,,
             sta OPERAND         ; ,,
@@ -915,7 +911,7 @@ CopyOp:     lda OUTBUFFER       ; Get first hex digit of output buffer
             jsr AddInput        ;   Copy it to input
             lda OUTBUFFER+1     ; Get second hex digit of output buffer
             jmp AddInput        ;   Copy it to input
-			           
+                       
 ; Hypothesis Test
 ; Search through the language table for each opcode and disassemble it using
 ; the opcode provided for the candidate instruction. If there's a match, then
@@ -2066,38 +2062,43 @@ File:       lda INBUFFER        ; First character after the F tool
             beq show_dir        ; ,,
             cmp #"#"            ; Octothorpe, set device
             bne disk_cmd        ; Anything else, run disk command
-            lda #1				; Get one- or two-digit hex number for the
-            sta IDX_IN			;   device number
-            jsr HexGet			;   ,,
+            lda #1              ; Get one- or two-digit hex number for the
+            sta IDX_IN          ;   device number
+            jsr HexGet          ;   ,,
             bcs set_dev         ; If not valid, ?DEVICE NOT PRESENT
             jmp dFail           ; ,,
 set_dev:    sta DEVICE          ; If so, set device number
             rts
 
             ; Execute disk command          
-disk_cmd:   ldx DEVICE
-            lda #15
-            tay
-            jsr SETLFS
-            jsr OPEN
-            ldx #15
-            jsr CHKOUT
-            ldy #0
--loop:      lda INBUFFER,y
-            beq show_st
-            jsr CHROUT
-            iny 
-            bne loop
+disk_cmd:   ldx DEVICE          ; Get current device number
+            lda #15             ; Set file number and secondary address
+            tay                 ; ,,
+            jsr SETLFS          ; Set logical file
+            jsr OPEN            ; And open it
+            ldx #15             ; Redirect output
+            jsr CHKOUT          ; ,,
+            lda #"I"            ; Send initialize command to make sure
+            jsr CHROUT          ;   status is updated
+            jsr CLRCHN          ;   ,,
+            ldx #15             ; Re-open the redirect
+            jsr CHKOUT          ; ,,
+            ldy #0              ; Now send the specified commmand from the
+-loop:      lda INBUFFER,y      ;   input buffer
+            beq show_st         ;   ,,
+            jsr CHROUT          ;   ,,
+            iny                 ;   ,,
+            bne loop            ;   ,,
 show_st:    jsr CLRCHN          ; Execute command         
-            ldx #15				; Show command status
-            jsr CHKIN			;   Set the channel for command status input
--loop:      jsr CHRIN
-            jsr CHROUT			; OK to use CHROUT, input is back to normal
-            cmp #$0d			; CR terminates status
-            bne loop			; ,,
-            jsr CLRCHN			; Close command channel out
-            lda #15				; ,,
-            jmp CLOSE			; ,,
+            ldx #15             ; Show command status
+            jsr CHKIN           ;   Set the channel for command status input
+-loop:      jsr CHRIN           ; Get status text from output channel
+            jsr CHROUT          ; OK to use CHROUT, input is back to normal
+            cmp #CR             ; CR terminates status
+            bne loop            ; ,,
+            jsr CLRCHN          ; Close command channel out
+            lda #15             ; ,,
+            jmp CLOSE           ; ,,
             
             ; Display directory
 show_dir:   lsr FIRST_REC       ; Clear first record flag
@@ -2127,28 +2128,28 @@ newline:    jsr ISCNTC          ; Exit if STOP key is pressed
             bne loop            ;   ,,
 -next_char: jsr CharIn          ; Get next character from line
             beq EOL             ; 0 indicates end-of-line
-            cmp #QUOTE 			; If this is a quote, handle the quote mode.
-            beq handle_qu		;   There are three quote modes... Unstarted,
-            bit QUOTE_FL		;   Started, and Done.
-			bvs	post_name		; Checks for quote mode Done
-			bpl next_char		; Checks for quote mode Unstarted
-dir_char:   jsr CharOut			; Quote mode is Started, so add character
-			jmp next_char		; ,,
-post_name:	cmp #"D"			; The file type is after the file name (PRG,
-			bne next_char		;   etc.). If a D is found, show it in reverse
-			ldy IDX_OUT
-			lda #RVS_OFF
-			sta OUTBUFFER-1,y
-			lda #RVS_ON
-			sta OUTBUFFER+3
-			bne dir_char
-handle_qu:  sec 				; Handle the quote mode by shifting 1 into
-			ror QUOTE_FL		;   the high bit.
-			bit QUOTE_FL		; 00000000 is Unstarted. 10000000 is Started
-			bvs get_qu			;   and 11000000 is Done
-			jsr AddrPrefix		; If Started, add the prefix
-get_qu:	    lda #QUOTE			; Feed a quote back to the directory name print
-			bne dir_char		;   it to the buffer
+            cmp #QUOTE          ; If this is a quote, handle the quote mode.
+            beq handle_qu       ;   There are three quote modes... Unstarted,
+            bit QUOTE_FL        ;   Started, and Done.
+            bvs post_name       ; Checks for quote mode Done
+            bpl next_char       ; Checks for quote mode Unstarted
+dir_char:   jsr CharOut         ; Quote mode is Started, so add character
+            jmp next_char       ; ,,
+post_name:  cmp #"D"            ; The file type is after the file name (PRG,
+            bne next_char       ;   etc.). If a D is found, show it in reverse
+            ldy IDX_OUT			;   text by replacing the first quote mark with
+            lda #0				;   Reverse On, and the last quote mark with
+            sta OUTBUFFER-1,y	;   the line terminator.
+            lda #RVS_ON			;   ,,
+            sta OUTBUFFER+3		;   ,,
+            bne dir_char		;   ,,
+handle_qu:  sec                 ; Handle the quote mode by shifting 1 into
+            ror QUOTE_FL        ;   the high bit.
+            bit QUOTE_FL        ; 00000000 is Unstarted. 10000000 is Started
+            bvs get_qu          ;   and 11000000 is Done
+            jsr AddrPrefix      ; If Started, add the prefix
+get_qu:     lda #QUOTE          ; Feed a quote back to the directory name print
+            bne dir_char        ;   it to the buffer
 EOL:        bit QUOTE_FL        ; If a quote hasn't been finished, end of dir
             bvc EOF             ; ,,
             bit FIRST_REC       ; Is this the first record?
@@ -2762,8 +2763,8 @@ find_var:   lda $46             ; The variable name is OK. Add bit 7 if a
 add_hexsig: lda IDX_IN          ; The hex sigil $ should only be added when
             cmp #7              ;   applied to an instruction operand, like
             beq sig             ;     JSR $nnnn or LDA ($nn, X) or LDA #$nn
-            cmp #8				;   which is the 7th or 8th position in the
-            bne mov2fac			;   buffer. For anything else, like arithmetic,
+            cmp #8              ;   which is the 7th or 8th position in the
+            bne mov2fac         ;   buffer. For anything else, like arithmetic,
 sig:        lda #"$"            ;   or the target address, the sigil is not
             jsr AddInput        ;   inserted.
 mov2fac:    lda $47             ; Move found variable to FAC
@@ -2993,12 +2994,7 @@ Prompt:     txa                 ; Based on the incoming X register, advance
             jsr CharOut         ;   ,,
             jsr Space           ;   Followed by a space
             jsr ShowCP          ; Show Command Pointer
-            lda TOOL_CHR        ; Check the tool character
-            cmp #T_ASM          ; If it's assembler, then add a space
-            bne crsr_over       ; ,,
-            lda #" "            ; ,,
-            .byte $3c           ; TOP (skip word)
-crsr_over:  lda #CRSRRT         ; Cursor right if not assembler tool
+            lda #CRSRRT         ; Cursor right
             jsr CharOut
             ldy #$00
 -loop:      lda OUTBUFFER,y     ; Copy the output buffer into KEYBUFF, which
@@ -3101,10 +3097,11 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
-            .asc $dd,"BEIGEMAZE.COM/WAX2",CR
-            .asc $dd,"V2.1       .? HELP",CR
+            .asc $dd," BEIGEMAZE.COM/WAX2",CR
+            .asc $dd,CR
+            .asc $dd," V2.1       .? HELP",CR
             .asc $ad,CR,$00
             
 Registers:  .asc CR,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
