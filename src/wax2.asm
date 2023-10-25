@@ -76,6 +76,7 @@ T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
 SIGIL       = "@"               ; Symbol sigil (@)
 FWD_NAME    = "&"               ; Forward reference name (&) 
+WILDCARD    = "!"				; Search wildcard character
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -1363,8 +1364,8 @@ FileError:  bne show_error      ; Error in A will be $00 if a cassette save is
 show_error: jmp ERROR_NO 
             
 ; Memory Load
-MemLoad:    jsr DropDown		; Find the bottom of a file list, for example
-			jsr ResetIn         ; Reset the input buffer because there's no addr
+MemLoad:    jsr DropDown        ; Find the bottom of a file list, for example
+            jsr ResetIn         ; Reset the input buffer because there's no addr
             jsr FileSetup       ; SETLFS, get filename length, etc.
             ldx #<INBUFFER+1    ; Set location of filename
             ldy #>INBUFFER+1    ; ,,
@@ -1516,27 +1517,27 @@ su_txt_r:   sty SEARCH_S
 ; indicate the starting address of the match.            
 MemSearch:  ldy WORK+1          ; Start index for search
 -loop:      lda INBUFFER+5,y    ; Get character to search
-            ldx WORK+1			; If start index is 1, it means we're ALSO
-            beq no_scr_c		;   looking for screen codes (b/c of the /)
+            ldx WORK+1          ; If start index is 1, it means we're ALSO
+            beq no_scr_c        ;   looking for screen codes (b/c of the /)
             jsr PETtoScr        ; Perform PETSCII to screen code conversion
 no_scr_c:   cmp (W_ADDR),y      ; Do the compare
             bne no_match        ; If this doesn't match, need to move on
             iny                 ; Otherwise, check for additional matches
-            cpy SEARCH_S		; Have we reached the search size?
-            bne loop			; ,,
-            beq mem_found		; If SEARCH_S matches, show found address
-no_match:   jmp next_check		; If no match, increment address, try again
-mem_found:  jsr ResetOut		; Show the match address on the screen
-            jsr AddrPrefix		; ,, Use the standard search prefix
-            lda W_ADDR			; ,,
-            clc					; Add the screen code offset
-            adc WORK+1			; ,,
-            sta W_ADDR			; ,,
-            bcc no_scr_c2		; ,,
-            inc W_ADDR+1		; ,,
-no_scr_c2:  jsr ShowAddr		; Show the address where the query was
-            jsr PrintBuff		;   found.
-next_check: jsr IncAddr  		; Increment the search address.
+            cpy SEARCH_S        ; Have we reached the search size?
+            bne loop            ; ,,
+            beq mem_found       ; If SEARCH_S matches, show found address
+no_match:   jmp next_check      ; If no match, increment address, try again
+mem_found:  jsr ResetOut        ; Show the match address on the screen
+            jsr AddrPrefix      ; ,, Use the standard search prefix
+            lda W_ADDR          ; ,,
+            clc                 ; Add the screen code offset
+            adc WORK+1          ; ,,
+            sta W_ADDR          ; ,,
+            bcc no_scr_c2       ; ,,
+            inc W_ADDR+1        ; ,,
+no_scr_c2:  jsr ShowAddr        ; Show the address where the query was
+            jsr PrintBuff       ;   found.
+next_check: jsr IncAddr         ; Increment the search address.
             jmp check_end                      
              
 ; Code Search
@@ -1544,9 +1545,9 @@ next_check: jsr IncAddr  		; Increment the search address.
 ; address matches the input, indicate the starting address of the match.
 CodeSearch: jsr ResetOut
             jsr AddrPrefix+3    ; Show address display convention, w/o prompt
-            jsr ShowAddr		; ,,
-            lda #0				; Set delimiter
-            jsr CharOut			; ,,
+            jsr ShowAddr        ; ,,
+            lda #" "            ; Set delimiter
+            jsr CharOut         ; ,,
             jsr Disasm          ; Disassmble the code at the working address
             ldx #7              ; Change output offset for space, and enter
             jsr IsMatch+2       ;   IsMatch after its LDX. If there's a match,
@@ -2078,9 +2079,10 @@ disk_cmd:   ldx DEVICE          ; Get current device number
             jsr CHKOUT          ; ,,
             ldy #0              ; Now send the specified command from the
 -loop:      lda INBUFFER,y      ;   input buffer, terminated by 0
-            iny                 ;   ,,
+            beq show_st         ;   ,,
             jsr CHROUT          ;   ,,
-            bne loop            ;   ,, (CHROUT sets Z when A=0)
+            iny                 ;   ,,
+            bne loop            ;   ,,
 show_st:    jsr CLRCHN          ; Execute command         
             ldx #15             ; Show command status
             jsr CHKIN           ;   Set the channel for command status input
@@ -2516,9 +2518,11 @@ IsMatch:    ldx #6              ; Offset for output after address
 -loop:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
             cmp #$01            ;   But ignore #$01
             beq match_ok        ;   ,,
-            cmp OUTBUFFER,x     ;   ,,
+            cmp #WILDCARD		; Handle wildcard character by advancing
+            beq wildc			;   output index
+match_c:    cmp OUTBUFFER,x     ; So input and output match at this index?
             bne not_found       ; See Lookup subroutine above
-            inx
+wildc:      inx
 match_ok:   iny
             cpx IDX_OUT
             bne loop            ; Loop until the buffer is done
@@ -3094,7 +3098,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
             .asc $dd,CR
@@ -3115,9 +3119,9 @@ HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
             .asc "T XFER   ",$dd,"F FILE",CR 
             .asc $5e," STAGE  ",$dd,"X EXIT",CR
             .asc "@ SYMBOLS",$dd,CR
-            .asc "* SET CP ",171,192,"PLUG-IN",192,192,CR
-            .asc "$ HEX2DEC",$dd,"U INVOKE",CR
-            .asc "# DEC2HEX",$dd,"P INSTALL",CR,$00
+            .asc "* SET CP ",171,192,"PLUG-IN",192,174,CR
+            .asc "$ HEX2DEC",$dd,"U INVOKE ",$dd,CR
+            .asc "# DEC2HEX",$dd,"P INSTALL",$dd,CR,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
@@ -4136,7 +4140,8 @@ cyc_ok:     sei
             jsr SetUserVar      ; Put A/Y in FAC1 for display or variable set
             jsr DirectMode      ; If in direct mode, show the FAC1 value
             bne cyc_r           ;   ,,
-show_cyc:   jsr $dddd           ;   Convert FAC1 to string
+show_cyc:   jsr CReturn			;   ,, Put count alone on new line
+			jsr $dddd           ;   Convert FAC1 to string
             jsr $cb1e           ;   Print it
             jmp CReturn         ;   Then carriage return
 cyc_r:      rts
