@@ -3096,10 +3096,9 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT," +27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
-            .asc $dd,CR
             .asc $dd," V2.1       .? HELP",CR
             .asc $ad,CR,$00
             
@@ -3118,8 +3117,8 @@ HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
             .asc $5e," STAGE  ",$dd,"X EXIT",CR
             .asc "@ SYMBOLS",$dd,CR
             .asc "* SET CP ",171,192,"PLUG-IN",192,174,CR
-            .asc "$ HEX2DEC",$dd,"U INVOKE ",$dd,CR
-            .asc "# DEC2HEX",$dd,"P INSTALL",$dd,CR,$00
+            .asc "$ HEX2DEC",$dd,"U INVOKE",CR
+            .asc "# DEC2HEX",$dd,"P INSTALL",CR,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
