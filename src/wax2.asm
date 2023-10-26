@@ -3110,7 +3110,7 @@ BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc "D DISASSM",$dd,"A ASSEMBLE",CR
             .asc "E ILLEGAL",$dd,"G GO",CR
             .asc "M MEMORY ",$dd,"R REGISTER",CR
-            .asc "I TEXT   ",$dd,"B BRKPT",CR
+            .asc "I TEXT   ",$dd,"B BRKPOINT",CR
             .asc "% BINARY ",$dd,"= TEST",CR
             .asc "C COMPARE",$dd,"L LOAD",CR,$00
 HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
