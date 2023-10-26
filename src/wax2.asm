@@ -6,12 +6,12 @@
 ;                  
 ; Release 1  - May 16, 2020
 ; wAx2       - January 23, 2022
-; wAx2.1     - October 7, 2023
+; wAx2.1     - October 26, 2023
 ; Assembled with XA
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
-; Copyright (c) 2020-2022 Jason Justian
+; Copyright (c) 2020-2023 Jason Justian
 ; uRelocate code by Michael Kircher, 2020, used with permission and my thanks
 ;
 ; Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -76,7 +76,7 @@ T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
 SIGIL       = "@"               ; Symbol sigil (@)
 FWD_NAME    = "&"               ; Forward reference name (&) 
-WILDCARD    = "!"				; Search wildcard character
+WILDCARD    = "="               ; Search wildcard character
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -357,7 +357,7 @@ SyntaxErr:  jsr DirectMode      ; In a BASIC program, respond to illegal
             jmp SYNTAX_ERR      ;   ,,
 cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
             jsr CHROUT          ;   with a question mark
-            jsr CReturn			;   ,,
+            jsr CReturn         ;   ,,
             jmp Return
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -2375,7 +2375,7 @@ ShowUsage:  plp                 ; Pop what was pushed in the main part
             bcc show_pr         ;   ,,
             iny                 ;   ,,
 show_pr:    jsr PrintStr        ;   ,,
-            jmp CReturn			;   ,, CR
+            jmp CReturn         ;   ,, CR
                 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; PLUG-IN MANAGER
@@ -2516,8 +2516,8 @@ IsMatch:    ldx #6              ; Offset for output after address
 -loop:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
             cmp #$01            ;   But ignore #$01
             beq match_ok        ;   ,,
-            cmp #WILDCARD		; Handle wildcard character by advancing
-            beq wildc			;   output index
+            cmp #WILDCARD       ; Handle wildcard character by advancing
+            beq wildc           ;   output index
 match_c:    cmp OUTBUFFER,x     ; So input and output match at this index?
             bne not_found       ; See Lookup subroutine above
 wildc:      inx
@@ -2547,7 +2547,7 @@ not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
 HexGet:     jsr CharGet
             cmp #QUOTE          ; Ignore quotation marks in hex, to allow
             beq HexGet          ;   string interpolation of hex in commands
-            cmp #"="            ; Skip two characters if the first is an
+            cmp #WILDCARD       ; Skip two characters if the first is an
             bne nyb             ;   equal sign (see Register for why)
             jsr CharGet         ;   ,,
             clc                 ;   ,,
@@ -4138,8 +4138,8 @@ cyc_ok:     sei
             jsr SetUserVar      ; Put A/Y in FAC1 for display or variable set
             jsr DirectMode      ; If in direct mode, show the FAC1 value
             bne cyc_r           ;   ,,
-show_cyc:   jsr CReturn			;   ,, Put count alone on new line
-			jsr $dddd           ;   Convert FAC1 to string
+show_cyc:   jsr CReturn         ;   ,, Put count alone on new line
+            jsr $dddd           ;   Convert FAC1 to string
             jsr $cb1e           ;   Print it
             jmp CReturn         ;   Then carriage return
 cyc_r:      rts
