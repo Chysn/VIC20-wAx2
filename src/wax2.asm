@@ -76,7 +76,7 @@ T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
 SIGIL       = "@"               ; Symbol sigil (@)
 FWD_NAME    = "&"               ; Forward reference name (&) 
-WILDCARD    = "="               ; Search wildcard character
+WILDCARD    = $19               ; Search wildcard character (PRINT token - $80)
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -476,10 +476,7 @@ Disasm:     jsr IncAddr         ; Get opcode
             bcc Unknown         ; Clear carry indicates an unknown opcode
             pha                 ; Store addressing mode for later
             jsr DMnemonic       ; Display mnemonic
-            lda TOOL_CHR        ; If the search is being run, go directly
-            cmp #T_SRC          ;   to the operand
-            beq disasm_op       ;   ,,
-            jsr Space
+            jsr Space           ; Space after mnemonic
 disasm_op:  pla                 ; Pass addressing mode to operand routine
             jmp DOperand        ; Display operand
 
@@ -648,9 +645,9 @@ TextEdit:   lsr CHARAC
             beq edit_exit       ;   as a string delimiter
             dec IDX_IN          ; If anything is next, back up the index and add
             lda #QUOTE          ;   a real quotation mark
-non_quote:  cmp #$99            ; The PRINT token is converted to ?
-            bne non_qm
-            lda #"?"
+non_quote:  cmp #$19            ; PRINT is detokenized as $19 (see Detokenize),
+            bne non_qm          ;   so convert $19 to quotation marks here.
+            lda #"?"            ;   ,,
 non_qm:     bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
             bpl skip_conv       ;   editor
             bit main_r          ; BIT #$60. Check for control character and
@@ -888,9 +885,9 @@ add_op:     jsr HexGet
             bcc repl_hex        ; ,,
             inc OPERAND+1       ; ,,
 repl_hex:   ldx IDX_IN
-            lda #1
-            sta INBUFFER-3,x
-            sta INBUFFER-2,x
+            lda #" "            ; Place spaces where arithmetic operators and
+            sta INBUFFER-3,x    ;   operands were, so they're ignored by the
+            sta INBUFFER-2,x    ;   assembler matcher
             sta INBUFFER-1,x
             jsr ResetOut        ; Will be using the output buffer as tmp hex
             ldx PREV_IDX        ; Starting index of instruction operand
@@ -1545,7 +1542,7 @@ next_check: jsr IncAddr         ; Increment the search address.
 CodeSearch: jsr ResetOut
             jsr AddrPrefix+3    ; Show address display convention, w/o prompt
             jsr ShowAddr        ; ,,
-            lda #" "            ; Set delimiter
+            lda #" "            ; Found disassembly space
             jsr CharOut         ; ,,
             jsr Disasm          ; Disassmble the code at the working address
             ldx #7              ; Change output offset for space, and enter
@@ -2353,8 +2350,8 @@ Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
 ; https://github.com/Chysn/VIC20-wAx2/wiki/User-Plug-In
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 PlugIn:     php                 ; Push processor status, used by most tools
-            lda INBUFFER        ; If the first character is P, then the user
-            cmp #"P"            ;   is asking for the usage text
+            lda INBUFFER        ; If the first character is #$19, then the user
+            cmp #$19            ;   is asking for the usage text
             beq ShowUsage       ;   ,,
             ldy #3              ; Get plug-in type
             lda (USER_VECT),y   ; ,,
@@ -2514,14 +2511,18 @@ CharGet:    ldx IDX_IN
 IsMatch:    ldx #6              ; Offset for output after address
             ldy #6              ; Offset for input after address
 -loop:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
-            cmp #$01            ;   But ignore #$01
-            beq match_ok        ;   ,,
+            cmp #" "            ;   But ignore spaces
+            beq skip_match      ;   ,,
             cmp #WILDCARD       ; Handle wildcard character by advancing
-            beq wildc           ;   output index
+            beq match_ok         ;   output index
 match_c:    cmp OUTBUFFER,x     ; So input and output match at this index?
-            bne not_found       ; See Lookup subroutine above
-wildc:      inx
-match_ok:   iny
+            beq match_ok        ; See Lookup subroutine above
+            lda #" "            ; If the output buffer character is a space,
+            cmp OUTBUFFER,x     ;   ,,
+            bne not_found       ;   advance to the next output index, but
+            dey                 ;   stay at the same input index.
+match_ok:   inx
+skip_match: iny
             cpx IDX_OUT
             bne loop            ; Loop until the buffer is done
             sec                 ; This matches; set carry
@@ -2911,7 +2912,9 @@ add_r:      rts
 ; Detokenize
 ; If a BASIC token is found, explode that token into PETSCII characters 
 ; so it can be disassembled. This is based on the ROM uncrunch code around $c71a
-Detokenize: ldy #$65
+Detokenize: cmp #$99            ; Don't detokenize PRINT. Instead,
+            beq last_char       ;   feed #$19 (no meaning) into the input buffer
+            ldy #$65
             tax                 ; Copy token number to X
 get_next:   dex
             beq explode         ; Token found, go write
