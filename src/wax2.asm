@@ -357,8 +357,7 @@ SyntaxErr:  jsr DirectMode      ; In a BASIC program, respond to illegal
             jmp SYNTAX_ERR      ;   ,,
 cmd_err:    lda #"?"            ; In direct mode, respond to illegal commands
             jsr CHROUT          ;   with a question mark
-            lda #CR             ;   ,,
-            jsr CHROUT          ;   ,,
+            jsr CReturn			;   ,,
             jmp Return
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -2376,8 +2375,7 @@ ShowUsage:  plp                 ; Pop what was pushed in the main part
             bcc show_pr         ;   ,,
             iny                 ;   ,,
 show_pr:    jsr PrintStr        ;   ,,
-            lda #CR
-            jmp CHROUT
+            jmp CReturn			;   ,, CR
                 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; PLUG-IN MANAGER
@@ -3050,7 +3048,7 @@ DropDown:   ldx #0              ; Get character at screen position
             cmp #WEDGE          ; Is it a . character?
             bne dd_r            ; If not, done positioning cursor
             lda #$11            ; Drop down one line
-            jsr $ffd2           ; ,,
+            jsr CHROUT          ; ,,
             bne loop            ; And look again
 dd_r:       rts
                         
@@ -3571,7 +3569,7 @@ ch_stop:    jsr ISCNTC          ; Check for STOP key
             bne wait            ; If not, just get more data
             jsr Progress        ; Show progress header  
             lda #CRSRUP         ; Cursor back up
-            jsr $ffd2           ; ,,
+            jsr CHROUT          ; ,,
             jmp wait            ; Back to start of wait loop
 
 ; Show Received Data Range            
