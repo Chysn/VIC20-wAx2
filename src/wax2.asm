@@ -2521,9 +2521,9 @@ match_c:    cmp OUTBUFFER,x     ; Do input and output match at this index?
             cmp OUTBUFFER,x     ;   ,,
             bne not_found       ;   advance to the next output index, but
             dey                 ;   stay at the same input index.
-match_ok:   inx					; Match is good, advance both indexes
-skip_match: iny					; If input space is skipped, advance only Y
-            cpx IDX_OUT			; Reached the end of output?
+match_ok:   inx                 ; Match is good, advance both indexes
+skip_match: iny                 ; If input space is skipped, advance only Y
+            cpx IDX_OUT         ; Reached the end of output?
             bne loop            ;   Loop until the buffer is done
             ;sec                ; Carry already set by CPX above
             rts
