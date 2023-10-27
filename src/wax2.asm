@@ -1545,14 +1545,14 @@ CodeSearch: jsr ResetOut
             lda #" "            ; Found disassembly space
             jsr CharOut         ; ,,
             jsr Disasm          ; Disassmble the code at the working address
-code_found: lda #WEDGE			; Show the wedge character as a prefix
-            jsr CHROUT			; ,,
+code_found: lda #WEDGE          ; Show the wedge character as a prefix
+            jsr CHROUT          ; ,,
             jsr PrintBuff       ; Show the code disassembly at this address
             ldx #7              ; Check for match.
             jsr IsMatch+2       ; If match, go to next instruction
             bcs ch_end_a        ; ,,
-            lda #CRSRUP			; If no match, cursor up.
-            jsr CHROUT			; ,,
+            lda #CRSRUP         ; If no match, cursor up.
+            jsr CHROUT          ; ,,
 ch_end_a:   jmp check_end       ; Go back for more      
       
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
