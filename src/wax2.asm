@@ -2514,18 +2514,18 @@ IsMatch:    ldx #6              ; Offset for output after address
             cmp #" "            ;   But ignore spaces
             beq skip_match      ;   ,,
             cmp #WILDCARD       ; Handle wildcard character by advancing
-            beq match_ok         ;   output index
-match_c:    cmp OUTBUFFER,x     ; So input and output match at this index?
-            beq match_ok        ; See Lookup subroutine above
+            beq match_ok        ;   output index
+match_c:    cmp OUTBUFFER,x     ; Do input and output match at this index?
+            beq match_ok        ; (See Lookup subroutine above)
             lda #" "            ; If the output buffer character is a space,
             cmp OUTBUFFER,x     ;   ,,
             bne not_found       ;   advance to the next output index, but
             dey                 ;   stay at the same input index.
-match_ok:   inx
-skip_match: iny
-            cpx IDX_OUT
-            bne loop            ; Loop until the buffer is done
-            sec                 ; This matches; set carry
+match_ok:   inx					; Match is good, advance both indexes
+skip_match: iny					; If input space is skipped, advance only Y
+            cpx IDX_OUT			; Reached the end of output?
+            bne loop            ;   Loop until the buffer is done
+            ;sec                ; Carry already set by CPX above
             rts
 
 ; Character to Nybble
