@@ -76,7 +76,7 @@ T_EXI       = "X"               ; Ersatz command for exit
 T_HLP       = $99               ; Tool character ? for help (PRINT token)
 SIGIL       = "@"               ; Symbol sigil (@)
 FWD_NAME    = "&"               ; Forward reference name (&) 
-WILDCARD    = $19               ; Search wildcard character (PRINT token - $80)
+WILDCARD    = "="               ; Search wildcard character (=)
 
 ; System resources - Routines
 GONE        = $c7e4
@@ -645,10 +645,7 @@ TextEdit:   lsr CHARAC
             beq edit_exit       ;   as a string delimiter
             dec IDX_IN          ; If anything is next, back up the index and add
             lda #QUOTE          ;   a real quotation mark
-non_quote:  cmp #$19            ; PRINT is detokenized as $19 (see Detokenize),
-            bne non_qm          ;   so convert $19 to quotation marks here.
-            lda #"?"            ;   ,,
-non_qm:     bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
+non_quote:  bit CHARAC          ; CHARAC bit 7 is high if this is a screen code
             bpl skip_conv       ;   editor
             bit main_r          ; BIT #$60. Check for control character and
             beq loop            ;   ignore control characters here
@@ -815,7 +812,9 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             bcc insert_hex      ;   100 or more, advance the index again to
             inc IDX_IN          ;   account for the third digit.
             ; Fall through to insert_hex
-insert_hex: jsr Arithmetic      ; Perform arithmetic on operand and code
+insert_hex: lda IDX_IN          ; Save starting index for arithmetic operand
+            sta PREV_IDX        ; ,,
+			jsr Arithmetic      ; Perform arithmetic on operand and code
             jsr ResetOut        ; Store the hex value of the operand after the
             sta INBUFFER+11     ;   #, so it can be matched by Hypotest.
             lda #"$"            ;   End it with 0 as a line delimiter
@@ -848,7 +847,7 @@ TOO_FAR_ER: ldx #$04            ; ?TOO FAR ERROR
 
 ; Get Operand
 ; Populate the operand for an instruction
-GetOperand: lda IDX_IN          ; Save starting index for f conversion
+GetOperand: lda IDX_IN          ; Save starting index for arithmetic operand
             sta PREV_IDX        ; ,,
             lda #1              ; Operand size-1 for arithmetic conversion
             sta INSTSIZE        ; ,,
@@ -2914,10 +2913,8 @@ add_r:      rts
 ; Detokenize
 ; If a BASIC token is found, explode that token into PETSCII characters 
 ; so it can be disassembled. This is based on the ROM uncrunch code around $c71a
-Detokenize: cmp #$99            ; Don't detokenize PRINT. Instead,
-            beq last_char       ;   feed #$19 (no meaning) into the input buffer
-            ldy #$65
-            tax                 ; Copy token number to X
+Detokenize: ldy #$65
+			tax                 ; Copy token number to X
 get_next:   dex
             beq explode         ; Token found, go write
 -loop       iny                 ; Else increment index
@@ -3101,7 +3098,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT," +27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
             .asc $dd," V2.1       .? HELP",CR
@@ -3114,7 +3111,7 @@ BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc "D DISASSM",$dd,"A ASSEMBLE",CR
             .asc "E ILLEGAL",$dd,"G GO",CR
             .asc "M MEMORY ",$dd,"R REGISTER",CR
-            .asc "I TEXT   ",$dd,"B BRKPOINT",CR
+            .asc "I TEXT   ",$dd,"B BRKPT",CR
             .asc "% BINARY ",$dd,"= TEST",CR
             .asc "C COMPARE",$dd,"L LOAD",CR,$00
 HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
