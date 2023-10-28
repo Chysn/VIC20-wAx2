@@ -338,5 +338,10 @@
 894 .= 6850 54455354494e4720
 895 .= *    535452
 896 .= *    a221 ; ldx #"!"
+900 .a 7000 lda #"r"+80
+902 .a *    ldy #"z"-20
+904 .a *    lda ($aa-01,x)
+906 .a *    bne $*-14
+910 .= 7000 a9d2a03aa1a9d0ea
 999 print "{up}           {blue}[far out]{black}"
 1000 print:print "{green}all tests pass!{blue}"
