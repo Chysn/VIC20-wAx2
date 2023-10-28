@@ -2511,21 +2511,24 @@ CharGet:    ldx IDX_IN
 ; Carry is set if there's a match, clear if not
 IsMatch:    ldx #6              ; Offset for output after address
             ldy #6              ; Offset for input after address
--loop:      lda OUTBUFFER,x		; If the disassembled code contains a space,
-            cmp #" "			;   skip it.
-            bne nx_in			;   ,,
-            inx					;   ,,
+-loop:      lda OUTBUFFER,x     ; If the disassembled code contains a space,
+            cmp #" "            ;   skip it.
+            bne nx_in           ;   ,,
+            inx                 ;   ,,
 nx_in:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
             cmp #" "            ;   But ignore spaces in assembly
             beq skip_match      ;   ,,
             cmp #WILDCARD       ; Handle wildcard character by advancing
-            beq match_ok        ;   both indexes
+            bne match_c         ;   both indexes
+            lda OUTBUFFER,x 
+            beq not_found
+            bne match_ok
 match_c:    cmp OUTBUFFER,x     ; Do input and output match at this index?
             bne not_found       ; (See Lookup subroutine above)
 match_ok:   inx                 ; Match is good, advance both indexes
 skip_match: iny                 ; If input space is skipped, advance only Y
             cpx IDX_OUT         ; Reached the end of output?
-            bne loop            ;   Loop until the buffer is done
+            bcc loop            ;   Loop until the buffer is done
             ;sec                ; Carry already set by CPX above
             rts
 
