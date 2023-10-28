@@ -814,7 +814,7 @@ try_base10: lda $7b             ; Now look for a base-10 number by temporarily
             ; Fall through to insert_hex
 insert_hex: lda IDX_IN          ; Save starting index for arithmetic operand
             sta PREV_IDX        ; ,,
-			jsr Arithmetic      ; Perform arithmetic on operand and code
+            jsr Arithmetic      ; Perform arithmetic on operand and code
             jsr ResetOut        ; Store the hex value of the operand after the
             sta INBUFFER+11     ;   #, so it can be matched by Hypotest.
             lda #"$"            ;   End it with 0 as a line delimiter
@@ -2511,17 +2511,17 @@ CharGet:    ldx IDX_IN
 ; Carry is set if there's a match, clear if not
 IsMatch:    ldx #6              ; Offset for output after address
             ldy #6              ; Offset for input after address
--loop:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
-            cmp #" "            ;   But ignore spaces
+-loop:      lda OUTBUFFER,x		; If the disassembled code contains a space,
+            cmp #" "			;   skip it.
+            bne nx_in			;   ,,
+            inx					;   ,,
+nx_in:      lda INBUFFER-2,y    ; Compare the assembly with the disassembly
+            cmp #" "            ;   But ignore spaces in assembly
             beq skip_match      ;   ,,
             cmp #WILDCARD       ; Handle wildcard character by advancing
-            beq match_ok        ;   output index
+            beq match_ok        ;   both indexes
 match_c:    cmp OUTBUFFER,x     ; Do input and output match at this index?
-            beq match_ok        ; (See Lookup subroutine above)
-            lda #" "            ; If the output buffer character is a space,
-            cmp OUTBUFFER,x     ;   ,,
-            bne not_found       ;   advance to the next output index, but
-            dey                 ;   stay at the same input index.
+            bne not_found       ; (See Lookup subroutine above)
 match_ok:   inx                 ; Match is good, advance both indexes
 skip_match: iny                 ; If input space is skipped, advance only Y
             cpx IDX_OUT         ; Reached the end of output?
@@ -2532,12 +2532,12 @@ skip_match: iny                 ; If input space is skipped, advance only Y
 ; Character to Nybble
 ; A is the character in the text buffer to be converted into a nybble
 Char2Nyb:   cmp #"9"+1          ; Is the character in range 0-9?
-            bcs not_digit       ; ,,
+            bcs not_b10dig      ; ,,
             cmp #"0"            ; ,,
-            bcc not_digit       ; ,,
+            bcc not_b10dig      ; ,,
             sbc #"0"            ; If so, nybble value is 0-9
             rts
-not_digit:  cmp #"F"+1          ; Is the character in the range A-F?
+not_b10dig: cmp #"F"+1          ; Is the character in the range A-F?
             bcs not_found       ; See Lookup subroutine above
             cmp #"A"         
             bcc not_found       ; See Lookup subroutine above
@@ -2914,7 +2914,7 @@ add_r:      rts
 ; If a BASIC token is found, explode that token into PETSCII characters 
 ; so it can be disassembled. This is based on the ROM uncrunch code around $c71a
 Detokenize: ldy #$65
-			tax                 ; Copy token number to X
+            tax                 ; Copy token number to X
 get_next:   dex
             beq explode         ; Token found, go write
 -loop       iny                 ; Else increment index
