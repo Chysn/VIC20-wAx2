@@ -2381,7 +2381,7 @@ show_pr:    jsr PrintStr        ;   ,,
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CurChar     = $0247
 
-PlugMenu:   jsr ResetIn         ; Reset in to get just a single hex byte
+PlugMenu:   jsr ResetIn         ; Reset in to check for quote
             jsr CharGet         ; If the next character is ", then install by
             cmp #QUOTE          ;   name. Otherwise, do an address-based
             beq get_name        ;   install
@@ -2392,7 +2392,7 @@ PlugMenu:   jsr ResetIn         ; Reset in to get just a single hex byte
             jsr HexGet          ; ,,
             bcc ShowMenu        ; ,,
             sta USER_VECT       ; ,,
-            jmp ShowUsage+1     ; Show usage, +1 to avoid PLP
+            jmp sh_usage        ; Show usage, if in direct mode
 get_name:   jsr CharGet         ; Get the next two characters after the quote
             sta CurChar         ; ,,
             jsr CharGet         ; ,,
@@ -2436,7 +2436,7 @@ cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
             sta USER_VECT       ;   looked up address
             lda MenuLoc_H,y     ;   ,,
             sta USER_VECT+1     ;   ,,
-            jsr DirectMode      ; Do not display usage in program mode
+sh_usage:   jsr DirectMode      ; Do not display usage in program mode
             bne menu_r          ; ,,
             jsr DropDown        ;
 desc_r:     jmp ShowUsage+1     ; Show new tool's usage, but skip the PLP     
