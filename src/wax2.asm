@@ -3101,7 +3101,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT," +27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
             .asc $dd," V2.1       .? HELP",CR
