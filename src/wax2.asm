@@ -1222,8 +1222,8 @@ SetBreak:   bcs set_bp          ; Set breakpoint if a valid address is provided
             cmp #"-"            ; If - is after the B, clear the breakpoint
             bne vec_r           ; ,,
             jsr ClearBP         ; ,,
-            jmp SetupVec        ; Turn on BRK trapping
-show_bp:    lda BREAKPOINT+2    ; Is a breakpoint set?
+show_bp:    jsr SetupVec		; Turn on BRK trapping
+			lda BREAKPOINT+2    ; Is a breakpoint set?
             beq vec_r           ; If not, just return
             lda BREAKPOINT      ; If so, populate working address with
             sta W_ADDR          ;   breakpoint, and show the line of code
@@ -1246,7 +1246,7 @@ set_bp:     jsr ClearBP         ; Clear the old breakpoint, if it exists
 bp_ok:      lda #CRSRUP         ; Cursor up to overwrite the command
             jsr CHROUT          ; ,,
 showcode:   jsr DirectMode      ; When run inside a BASIC program, skip the
-            bne SetupVec        ;   BRK line display
+            bne vec_r           ;   BRK line display
             ldx #$01            ; List a single line for the user to review
             jsr ListLine        ; ,,
             ; Fall through to SetupVec
