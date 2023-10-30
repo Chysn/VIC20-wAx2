@@ -2351,8 +2351,8 @@ Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
 ; https://github.com/Chysn/VIC20-wAx2/wiki/User-Plug-In
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 PlugIn:     php                 ; Push processor status, used by most tools
-            lda INBUFFER        ; If the first character is #$19, then the user
-            cmp #"P"            ;   is asking for the usage text
+            lda INBUFFER        ; If the character is P (detokenized PRINT)
+            cmp #"P"            ;   the user is asking for the usage text
             beq ShowUsage       ;   ,,
             ldy #3              ; Get plug-in type
             lda (USER_VECT),y   ; ,,
@@ -3101,7 +3101,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT," +27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
             .asc $dd," V2.1       .? HELP",CR
@@ -3111,10 +3111,10 @@ Registers:  .asc CR,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
 PFNames:    .asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc "D DISASSM",$dd,"A ASSEMBLE",CR
-            .asc "E ILLEGAL",$dd,"G GO",CR
+HelpScr1:   .asc "D",176,"DISASSM",$dd,"A ASSEMBLE",CR
+            .asc "E",173,"+UNOFF.",$dd,"G GO",CR
             .asc "M MEMORY ",$dd,"R REGISTER",CR
-            .asc "I TEXT   ",$dd,"B BRKPT",CR
+            .asc "I TEXT   ",$dd,"B BRKPOINT",CR
             .asc "% BINARY ",$dd,"= TEST",CR
             .asc "C COMPARE",$dd,"L LOAD",CR,$00
 HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
@@ -3122,8 +3122,8 @@ HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
             .asc $5e," STAGE  ",$dd,"X EXIT",CR
             .asc "@ SYMBOLS",$dd,CR
             .asc "* SET CP ",171,192,"PLUG-IN",192,174,CR
-            .asc "$ HEX2DEC",$dd,"U INVOKE",CR
-            .asc "# DEC2HEX",$dd,"P INSTALL",CR,$00
+            .asc "$ HEX-DEC",$dd,"U INVOKE",CR
+            .asc "# DEC-HEX",$dd,"P INSTALL",CR,$00
         
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
@@ -3134,7 +3134,7 @@ RBErrMsg:   .asc "TOO FA",$d2
 ; FAC for 65536
 F65536:     .byte $91,$00,$00,$00,$00
 
-; Instruction Set
+; 6502 Instruction Set
 ; This table contains two types of one-word records--mnemonic records and
 ; instruction records. Every word in the table is in big-endian format, so
 ; the high byte is first.
@@ -3359,7 +3359,7 @@ InstrSet:   .byte $09,$07       ; ADC
             .byte $98,$b0       ; * TYA implied
             .byte TABLE_END,$00 ; End of 6502 table
             
-            ; 6502 "Illegal" instructions
+            ; 6502 Unofficial Instructions
             ; with alternate names. In many cases, there's no consensus on what
             ; the mnemonic for some instructions should be. If you have strong
             ; feelings, the comments above the standard instruction table 
