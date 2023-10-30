@@ -2352,7 +2352,7 @@ Help:       lda #<HelpScr1      ; Print help screen 1. It's broken into pieces
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 PlugIn:     php                 ; Push processor status, used by most tools
             lda INBUFFER        ; If the first character is #$19, then the user
-            cmp #$99            ;   is asking for the usage text
+            cmp #"P"            ;   is asking for the usage text
             beq ShowUsage       ;   ,,
             ldy #3              ; Get plug-in type
             lda (USER_VECT),y   ; ,,
