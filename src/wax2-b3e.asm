@@ -3,6 +3,7 @@
 ;                                     wAx 8K
 ;                            Integrated Monitor Tools
 ;                           (c)2020-2022 Jason Justian
+;                                 Block 3 Edition
 ;                  
 ; Release 1  - May 16, 2020
 ; wAx2       - January 23, 2022
@@ -36,7 +37,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 
 ; Configuration
-*           = $a000             ; Assembly location
+*           = $6000             ; Assembly location
 LIST_NUM    = $10               ; Display this many lines
 SEARCH_L    = $10               ; Search this many pages (s * 256 bytes)
 DEF_DEVICE  = $08               ; Default device number

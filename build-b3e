@@ -1,0 +1,9 @@
+#!/bin/bash
+
+xa -l toc-b3e -o ./vic/wax2-b3e.bin ./src/wax2-b3e.asm
+printf "\x00\x60" | cat - ./vic/wax2-b3e.bin > ./vic/wax2-b3e.prg
+cat ./vic/wax2-b3e.bin ./src/padding.bin | head -c 8192 > ./vic/wax2-b3e.eep
+cp ./vic/wax2-b3e.prg /Users/jej/personal/vic/wax2-b3e
+
+ls -la ./vic/wax2-b3e.bin
+
