@@ -10,55 +10,55 @@
   140 .m c000 c400
   150 .u off
   160 .=0001 61a5
-  170 print ". [ok]"
+  170 print ". [pass]"
   180 rem **** i ****
   190 print "i tool..";
   200 .u on
   210 .i d000 d400
   220 .u off
   230 .=0001 792d
-  240 print ". [ok]"
+  240 print ". [pass]"
   250 rem **** % ****
   260 print "%{$a0}tool..";
   270 .u on
   280 .% 8000 8100
   290 .u off
   300 .=0001 a6dc
-  310 print ". [ok]"
+  310 print ". [pass]"
   320 print "c tool..";
   330 .u on
   340 .u on
   350 .c 8000 8100 8800
   360 .u off
   370 .=0001 f479
-  380 print ". [ok]"
+  380 print ". [pass]"
   390 rem **** d ****
   400 print "d tool..";
   410 .u on
   420 .d eabf eb25
   430 .u off
   440 .=0001 c632
-  450 print ". [ok]"
+  450 print ". [pass]"
   460 rem **** h ****
-  470 print "search"
+  470 print "h tool"
   480 print "  hex ..";
   490 .u on
   500 .h 8000:80 40 20
   510 .u off
   520 .=0001 042d
-  530 print ". [ok]"
+  530 print ". [pass]"
   540 print "  text..";
   550 .u on
   560 .h c000 "cbm"
   570 .u off
   580 .=0001 0437
-  590 print ". [ok]"
+  590 print ". [pass]"
   600 print "  code..";
   610 .u on
   620 .h d000 ldy #$==
   630 .u off
   640 .= 0001 2c1e
-  650 print ". [ok]"
+  650 print ". [pass]"
   660 print:print "{grn}all tests pass!{blu}":end
   670 .@-
   680 v = peek(807)*256+peek(806)
