@@ -1186,7 +1186,9 @@ pfoff:      lda #RVS_OFF        ; Reverse off = flag is off
 ; Set register values
 ; In the order AA [XX] [YY] [PR] [ST] [PC]
 ; The stack pointer value is not actually set 
-; Keep a register the same by entering == in its place  
+; Keep a register the same by entering == in its place
+; Note that no syntax error is returned for invalid input. This is so that
+; .; can be used as a comment within BASIC code.
 Register:   jsr ResetIn         ; Reset in because allowing a single byte
             jsr CharGet         ; If alone on the line, show register display
             beq RegDisp         ; ,,
