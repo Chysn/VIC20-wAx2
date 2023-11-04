@@ -2384,16 +2384,15 @@ show_pr:    jsr PrintStr        ;   ,,
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CurChar     = $0247
 
-PlugMenu:   jsr ResetIn         ; Reset in to check for quote
+PlugMenu:   bcs instaddr		; First, try to install by address
+            jsr ResetIn         ; Reset in to check for quote
             jsr CharGet         ; If the next character is ", then install by
-            cmp #QUOTE          ;   name. Otherwise, do an address-based
-            beq get_name        ;   install
-            jsr ResetIn         ; Install plug-in by address
-            jsr HexGet          ; ,,
-            bcc ShowMenu        ; ,,
-            sta USER_VECT+1     ; ,,
-            jsr HexGet          ; ,,
-            bcc ShowMenu        ; ,,
+            cmp #QUOTE          ;   name. Otherwise, show the menu
+            beq get_name        ;   ,,
+            bne ShowMenu        ;   ,,
+instaddr:   lda W_ADDR+1		; Install by address
+			sta USER_VECT+1     ; ,,
+			lda W_ADDR			; ,,
             sta USER_VECT       ; ,,
             jmp sh_usage        ; Show usage, if in direct mode
 get_name:   jsr CharGet         ; Get the next two characters after the quote
@@ -3085,7 +3084,7 @@ MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CYtxt,<BAtxt,<WAtxt
 MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CYtxt,>BAtxt,>WAtxt
 MEtxt:      .asc CR,".P ",QUOTE,"MEM CONF",QUOTE,$00
 REtxt:      .asc CR,".P ",QUOTE,"RELOC",QUOTE,$00
-DEtxt:      .asc CR,".P ",QUOTE,"DEBUG",QUOTE,$00
+DEtxt:      .asc CR,".P ",QUOTE,"DE-BUG",QUOTE,$00
 MLtxt:      .asc CR,".P ",QUOTE,"ML2BAS",QUOTE,$00
 CYtxt:      .asc CR,".P ",QUOTE,"CYCLES",QUOTE,$00
 BAtxt:      .asc CR,".P ",QUOTE,"BAS AID",QUOTE,$00
@@ -3104,7 +3103,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
             .asc $dd," V2.1       .? HELP",CR
@@ -3117,7 +3116,7 @@ BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc "D",176,"DISASSM",$dd,"A ASSEMBLE",CR
             .asc "E",173,"+UNOFF.",$dd,"G GO",CR
             .asc "M MEMORY ",$dd,"R REGISTER",CR
-            .asc "I TEXT   ",$dd,"B BRKPT",CR
+            .asc "I TEXT   ",$dd,"B BRKPOINT",CR
             .asc "% BINARY ",$dd,"= TEST",CR
             .asc "C COMPARE",$dd,"L LOAD",CR,$00
 HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
