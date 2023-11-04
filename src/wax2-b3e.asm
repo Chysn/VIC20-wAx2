@@ -2,7 +2,7 @@
 ;
 ;                                     wAx 8K
 ;                            Integrated Monitor Tools
-;                           (c)2020-2022 Jason Justian
+;                           (c)2020-2023 Jason Justian
 ;                                 Block 3 Edition
 ;                  
 ; Release 1  - May 16, 2020
