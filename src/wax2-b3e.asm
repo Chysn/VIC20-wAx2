@@ -4,7 +4,7 @@
 ;                            Integrated Monitor Tools
 ;                           (c)2020-2023 Jason Justian
 ;                                 Block 3 Edition
-;                  
+;                   
 ; Release 1  - May 16, 2020
 ; wAx2       - January 23, 2022
 ; wAx2.1     - October 26, 2023
@@ -380,8 +380,11 @@ DEF:        lda #T_DIS          ; Change the tool from $96 (DEF_TOKEN)
             sta W_ADDR          ;   ,,
             ; Fall through to List. Carry flag from HexGet maintains its meaning
 
-List:       bcc list_cont       ; If no start address, continue list at W_ADDR
-            lda #$ff            ; Default range to top of memory
+List:       bcs from_addr       ; If no start address, continue list at W_ADDR
+            lda INBUFFER
+            beq list_cont
+            jmp SyntaxErr
+from_addr:  lda #$ff            ; Default range to top of memory
             sta RANGE_END       ; ,,
             sta RANGE_END+1     ; ,,
             jsr HexGet          ; 
@@ -1225,8 +1228,8 @@ SetBreak:   bcs set_bp          ; Set breakpoint if a valid address is provided
             cmp #"-"            ; If - is after the B, clear the breakpoint
             bne vec_r           ; ,,
             jsr ClearBP         ; ,,
-show_bp:    jsr SetupVec		; Turn on BRK trapping
-			lda BREAKPOINT+2    ; Is a breakpoint set?
+show_bp:    jsr SetupVec        ; Turn on BRK trapping
+            lda BREAKPOINT+2    ; Is a breakpoint set?
             beq vec_r           ; If not, just return
             lda BREAKPOINT      ; If so, populate working address with
             sta W_ADDR          ;   breakpoint, and show the line of code
@@ -2312,8 +2315,7 @@ StartLine:  jsr ResetOut
             lda #";"
             jsr CharOut
             jsr ShowCP
-            jsr Space
-            rts
+            jmp Space
 
 ; End Line
 ; Complete the line by showing the count in reverse (differs) or
@@ -2335,8 +2337,7 @@ show_qty:   lda COUNT+1         ; Show number of matches/no matches
             jsr HexOut          ;   before the change
             lda COUNT           ;   ,,
             jsr HexOut          ;   ,,
-            jsr PrintBuff       ;   ,,
-            rts
+            jmp PrintBuff       ;   ,,
                  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 ; HELP
@@ -2384,15 +2385,15 @@ show_pr:    jsr PrintStr        ;   ,,
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CurChar     = $0247
 
-PlugMenu:   bcs instaddr		; First, try to install by address
+PlugMenu:   bcs instaddr        ; First, try to install by address
             jsr ResetIn         ; Reset in to check for quote
             jsr CharGet         ; If the next character is ", then install by
             cmp #QUOTE          ;   name. Otherwise, show the menu
             beq get_name        ;   ,,
             bne ShowMenu        ;   ,,
-instaddr:   lda W_ADDR+1		; Install by address
-			sta USER_VECT+1     ; ,,
-			lda W_ADDR			; ,,
+instaddr:   lda W_ADDR+1        ; Install by address
+            sta USER_VECT+1     ; ,,
+            lda W_ADDR          ; ,,
             sta USER_VECT       ; ,,
             jmp sh_usage        ; Show usage, if in direct mode
 get_name:   jsr CharGet         ; Get the next two characters after the quote
@@ -3103,7 +3104,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
             .asc $dd," V2.1       .? HELP",CR
@@ -3116,7 +3117,7 @@ BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc "D",176,"DISASSM",$dd,"A ASSEMBLE",CR
             .asc "E",173,"+UNOFF.",$dd,"G GO",CR
             .asc "M MEMORY ",$dd,"R REGISTER",CR
-            .asc "I TEXT   ",$dd,"B BRKPOINT",CR
+            .asc "I TEXT   ",$dd,"B BRKPT",CR
             .asc "% BINARY ",$dd,"= TEST",CR
             .asc "C COMPARE",$dd,"L LOAD",CR,$00
 HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
@@ -4083,7 +4084,6 @@ CheckRel:   ldx #$00            ; Check the instruction at the working address
             jsr CharOut         ; ,,
             jsr IncAddr         ; Add the instruction opcode to the buffer
             jsr HexOut          ; ,,
-            jsr Space           ; Space between instruction and operand
             jsr IncAddr         ; Add the operand to the buffer
             jsr HexOut          ; ,,
             lda #";"            ; Show the mnemonic for the instruction as
