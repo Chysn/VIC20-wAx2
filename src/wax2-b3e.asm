@@ -2419,13 +2419,13 @@ ShowMenu:   lda #"$"
             jsr PrintBuff       ;   ,,
             jsr ShowUsage+1     ; Show the usage template
             ldx #0              ; Iterate through each plug-in
--loop:      lda #WEDGE			; For each item in the list, show prompt,
-			jsr CHROUT			;   ,,
-			lda TOOL_CHR		;   then the current tool character
-			jsr CHROUT			;   ,,
-			lda #" "			;   then a space. This is a memory savings over
-			jsr CHROUT			;   putting these things in the menu table.
-			lda USER_VECT       ; Compare the user vector to this plug-in's
+-loop:      lda #WEDGE          ; For each item in the list, show prompt,
+            jsr CHROUT          ;   ,,
+            lda TOOL_CHR        ;   then the current tool character
+            jsr CHROUT          ;   ,,
+            lda #" "            ;   then a space. This is a memory savings over
+            jsr CHROUT          ;   putting these things in the menu table.
+            lda USER_VECT       ; Compare the user vector to this plug-in's
             cmp MenuLoc_L,x     ;   address, reverse the text for the 
             bne m_next_it       ;   name if it's currently selected
             lda USER_VECT+1     ;   ,,
@@ -2433,12 +2433,12 @@ ShowMenu:   lda #"$"
             bne m_next_it       ;   ,,
             lda #RVS_ON         ;   ,,
             jsr CHROUT          ;   ,,
-m_next_it:  lda #QUOTE			; Quote before the name
-			jsr CHROUT			; ,,
-			lda MenuText_L,x    ; Show the template name to complete the
+m_next_it:  lda #QUOTE          ; Quote before the name
+            jsr CHROUT          ; ,,
+            lda MenuText_L,x    ; Show the template name to complete the
             ldy MenuText_H,x    ;   install string
             jsr PrintStr        ;   ,,
-			inx                 ;   ,,
+            inx                 ;   ,,
             cpx #PLUGINS        ; End of menu?
             bne loop            ; ,,
             rts
