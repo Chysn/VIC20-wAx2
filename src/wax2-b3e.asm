@@ -1101,17 +1101,10 @@ get_bytes:  ldy #$00            ; Start with 0 index
 -loop:      jsr HexGet   
             bcc test_r          ; Bail out on the first non-hex byte
 add_test:   cmp (W_ADDR),y
-            bne test_err      
-            iny
-            bne loop
-test_r:     tya                 ; Update working address with number of
-            clc                 ;   bytes tested, in order to update the
-            adc W_ADDR          ;   Command Pointer
-            sta C_PT            ;   ,,
-            lda #$00            ;   ,,
-            adc W_ADDR+1        ;   ,,
-            sta C_PT+1          ;   ,,
-            jmp CPtoBASIC
+            bne test_err
+            jsr IncAddr
+            jmp loop
+test_r:     jmp Addr2CP
 test_err:   jmp MIS_ERROR       ; ?MISMATCH ERROR on failed test
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
