@@ -3,8 +3,7 @@
 ;                                     wAx 8K
 ;                            Integrated Monitor Tools
 ;                           (c)2020-2023 Jason Justian
-;                                 Block 3 Edition
-;                   
+;                  
 ; Release 1  - May 16, 2020
 ; wAx2       - January 23, 2022
 ; wAx2.1     - October 26, 2023
@@ -2420,19 +2419,27 @@ ShowMenu:   lda #"$"
             jsr PrintBuff       ;   ,,
             jsr ShowUsage+1     ; Show the usage template
             ldx #0              ; Iterate through each plug-in
--loop:      lda MenuText_L,x    ; ,,
-            ldy MenuText_H,x    ; ,,
-            jsr PrintStr        ; ,,
-            lda USER_VECT       ; ,, Compare the user vector to this plug-in's
-            cmp MenuLoc_L,x     ; ,, address, and show an asterisk after the 
-            bne m_next_it       ; ,, name if it's currently selected
-            lda USER_VECT+1     ; ,, ,,
-            cmp MenuLoc_H,x     ; ,, ,,
-            bne m_next_it       ; ,, ,,
-            lda #"*"            ; ,, ,,
-            jsr CHROUT          ; ,, ,,
-m_next_it:  inx                 ; ,,
-            cpx #PLUGINS        ; ,,
+-loop:      lda #WEDGE			; For each item in the list, show prompt,
+			jsr CHROUT			;   ,,
+			lda TOOL_CHR		;   then the current tool character
+			jsr CHROUT			;   ,,
+			lda #" "			;   then a space. This is a memory savings over
+			jsr CHROUT			;   putting these things in the menu table.
+			lda USER_VECT       ; Compare the user vector to this plug-in's
+            cmp MenuLoc_L,x     ;   address, reverse the text for the 
+            bne m_next_it       ;   name if it's currently selected
+            lda USER_VECT+1     ;   ,,
+            cmp MenuLoc_H,x     ;   ,,
+            bne m_next_it       ;   ,,
+            lda #RVS_ON         ;   ,,
+            jsr CHROUT          ;   ,,
+m_next_it:  lda #QUOTE			; Quote before the name
+			jsr CHROUT			; ,,
+			lda MenuText_L,x    ; Show the template name to complete the
+            ldy MenuText_H,x    ;   install string
+            jsr PrintStr        ;   ,,
+			inx                 ;   ,,
+            cpx #PLUGINS        ; End of menu?
             bne loop            ; ,,
             rts
 cfound:     lda MenuLoc_L,y     ; Found item, so set plug-in vector based on
@@ -3083,13 +3090,13 @@ ToolAddr_H: .byte >List-1,>Assemble-1,>List-1,>Register-1,>Go-1
 ; Plug-In Menu Data           
 MenuText_L: .byte <MEtxt,<REtxt,<DEtxt,<MLtxt,<CYtxt,<BAtxt,<WAtxt
 MenuText_H: .byte >MEtxt,>REtxt,>DEtxt,>MLtxt,>CYtxt,>BAtxt,>WAtxt
-MEtxt:      .asc CR,".P ",QUOTE,"MEM CONF",QUOTE,$00
-REtxt:      .asc CR,".P ",QUOTE,"RELOC",QUOTE,$00
-DEtxt:      .asc CR,".P ",QUOTE,"DE-BUG",QUOTE,$00
-MLtxt:      .asc CR,".P ",QUOTE,"ML2BAS",QUOTE,$00
-CYtxt:      .asc CR,".P ",QUOTE,"CYCLES",QUOTE,$00
-BAtxt:      .asc CR,".P ",QUOTE,"BAS AID",QUOTE,$00
-WAtxt:      .asc CR,".P ",QUOTE,"WAXFER",QUOTE,CR,$00
+MEtxt:      .asc "MEM CONF",QUOTE,CR,$00
+REtxt:      .asc "RELOC",QUOTE,CR,$00
+DEtxt:      .asc "DE-BUG",QUOTE,CR,$00
+MLtxt:      .asc "ML2BAS",QUOTE,CR,$00
+CYtxt:      .asc "CYCLES",QUOTE,CR,$00
+BAtxt:      .asc "BAS AID",QUOTE,CR,$00
+WAtxt:      .asc "WAXFER",QUOTE,CR,$00
             
 MenuChar1:  .asc "M","R","D","M","C","B","W"
 MenuChar2:  .asc "E","E","E","L","Y","A","A"
@@ -3104,7 +3111,7 @@ ErrAddr_H:  .byte >AsmErrMsg,>MISMATCH,>LabErrMsg,>ResErrMsg,>RBErrMsg
 
 ; Text display tables  
 wAxpander:  .asc CRSRUP,CRSRUP,CRSRRT,CRSRRT
-            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT,"+27K",CR,CR,$00
+            .asc CRSRRT,CRSRRT,CRSRRT,CRSRRT," +27K",CR,CR,$00
 Banner:     .asc CR,$b0,CR
             .asc $dd," BEIGEMAZE.COM/WAX2",CR
             .asc $dd," V2.1       .? HELP",CR
@@ -3114,20 +3121,20 @@ Registers:  .asc CR,$c0,$c0,"A",$c0,$c0,"X",$c0,$c0,"Y",$c0,$c0,"P",$c0
             .asc $c0,"S",$ae,$00
 PFNames:    .asc "C","Z",$01,"D",$01,$01,"V","N"            
 BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
-HelpScr1:   .asc "D",176,"DISASSM",$dd,"A ASSEMBLE",CR
-            .asc "E",173,"+UNOFF.",$dd,"G GO",CR
-            .asc "M MEMORY ",$dd,"R REGISTER",CR
-            .asc "I TEXT   ",$dd,"B BRKPT",CR
-            .asc "% BINARY ",$dd,"= TEST",CR
-            .asc "C COMPARE",$dd,"L LOAD",CR,$00
-HelpScr2:   .asc "H SEARCH ",$dd,"S SAVE",CR
-            .asc "T XFER   ",$dd,"F FILE",CR 
-            .asc $5e," STAGE  ",$dd,"X EXIT",CR
+HelpScr1:   .asc T_DIS,176,"DISASSM",$dd,"A ASSEMBLE",CR
+            .asc T_XDI,173,"+UNOFF.",$dd,"G GO",CR
+            .asc T_MEM," MEMORY ",$dd,T_REG," REGISTER",CR
+            .asc T_INT," TEXT   ",$dd,T_BRK," BRKPOINT",CR
+            .asc T_BIN," BINARY ",$dd,"= TEST",CR
+            .asc T_COM," COMPARE",$dd,T_LOA," LOAD",CR,$00
+HelpScr2:   .asc T_SRC," SEARCH ",$dd,T_SAV," SAVE",CR
+            .asc T_CPY," XFER   ",$dd,T_FIL," FILE",CR 
+            .asc $5e," STAGE  ",$dd,T_EXI," EXIT",CR
             .asc "@ SYMBOLS",$dd,CR
             .asc "* SET CP ",171,192,"PLUG-IN",192,174,CR
-            .asc "$ HEX-DEC",$dd,"U INVOKE",CR
-            .asc "# DEC-HEX",$dd,"P INSTALL",CR,$00
-        
+            .asc T_H2T," HEX-DEC",$dd,T_USR," INVOKE",CR
+            .asc T_T2H," DEC-HEX",$dd,T_MEN," INSTALL",CR,$00
+                    
 ; Error messages
 AsmErrMsg:  .asc "ASSEMBL",$d9
 LabErrMsg:  .asc "SYMBO",$cc
