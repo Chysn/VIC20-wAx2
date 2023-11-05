@@ -1,7 +1,3 @@
-/Users/jej/personal/VIC20-wAx2/vic
-
-
-;wax2test2.prg ==1201==
   100 print "{clr}{red}wax2 output test suite{blk}"
   105 gosub 670
   110 rem **** m ****
