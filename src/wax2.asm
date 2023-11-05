@@ -2602,7 +2602,7 @@ pc_r:       rts
 ; statuses, they should begin with an asterisk, and then a space,
 ; and then the address. This shows the semicolon and the space
 AddrPrefix: jsr wAxPrompt
-            lda #"*"
+CPPlace:    lda #"*"
             jsr CharOut
             ; Fall through to Space
 
@@ -3117,7 +3117,7 @@ BreakMsg:   .asc CR,RVS_ON,"BRK",RVS_OFF,$00
 HelpScr1:   .asc T_DIS,176,"DISASSM",$dd,"A ASSEMBLE",CR
             .asc T_XDI,173,"+UNOFF.",$dd,"G GO",CR
             .asc T_MEM," MEMORY ",$dd,T_REG," REGISTER",CR
-            .asc T_INT," TEXT   ",$dd,T_BRK," BRKPOINT",CR
+            .asc T_INT," TEXT   ",$dd,T_BRK," BRKPT",CR
             .asc T_BIN," BINARY ",$dd,"= TEST",CR
             .asc T_COM," COMPARE",$dd,T_LOA," LOAD",CR,$00
 HelpScr2:   .asc T_SRC," SEARCH ",$dd,T_SAV," SAVE",CR
@@ -3900,8 +3900,7 @@ found_end:  lda MODIFIER        ; If the code is not relocatable, skip the
             jsr LineNumber      ; Add line number to first line
             lda #WEDGE          ; Add wedge character to line
             jsr AddByte         ; ,,
-            lda #$ac            ; Add PC set tool
-            jsr AddByte         ; ,,
+            jsr AddBASCP		; Add * token to line
             jsr ResetOut        ; Add the start address to the output buffer
             jsr ShowAddr        ; ,,
             jsr AddBuffer       ; Add the output buffer to the BASIC line
@@ -3927,8 +3926,7 @@ show_tool:  jsr AddByte         ; Add the selected tool to the buffer
             beq show_addr       ;   add the * instead of the address
             cmp #"T"            ;   ,,
             beq show_addr       ;   ,,
-            lda #$ac            ;   ,,
-            jsr AddByte         ;   ,,
+            jsr AddBASCP        ;   ,, Add * token
             jmp code_part2      ;   ,,
 show_addr:  jsr ResetOut        ; Add the current address to the BASIC line
             jsr ShowAddr        ; ,,
@@ -3943,7 +3941,7 @@ code_part2: jsr ResetOut        ; Reset output for the code portion
             cmp #"T"            ;   for assertion test modified and
             beq HexDump         ;   handle that, if necessary. Otherwise, check
             jsr CheckRel        ;   for relative branch. If so, disassemble the
-            bcs code2buff       ;   instruction as two bytes.
+            bcs code2buff       ;   instruction with CP offset.
 gen_code:   jsr Disasm          ; Disassemble code to empty output buffer and
 code2buff:  jsr AddBuffer       ;   add it to the BASIC LINE
             jsr mEndLine        ; End the line
@@ -3989,6 +3987,10 @@ IncLine:    lda #$05            ; Increment the line number by 5
             adc LINE_NUM+1      ; ,,
             sta LINE_NUM+1      ; ,,
             rts    
+
+AddBASCP:   lda #$ac            ; Add PC set tool
+            ; Fall through to AddByte
+
  
 ; Add Byte
 ; Add the byte in Accumulator to the BASIC line            
@@ -4080,18 +4082,29 @@ CheckRel:   ldx #$00            ; Check the instruction at the working address
             bcc clc_r           ; ,,
             cmp #$c0            ; Is the instruction relative mode?
             bne clc_r           ; If not, exit
-            lda #":"            ; Add a colon to indicate that bytes follow
+            jsr DMnemonic       ; Add branch instruction mnemonic
+            jsr IncAddr         ; Increment to the operand
+            jsr Space
+            jsr HexPrefix
+            lda #$ac            ; Add the * token
             jsr CharOut         ; ,,
-            jsr IncAddr         ; Add the instruction opcode to the buffer
-            jsr HexOut          ; ,,
-            jsr IncAddr         ; Add the operand to the buffer
-            jsr HexOut          ; ,,
-            lda #";"            ; Show the mnemonic for the instruction as
-            jsr CharOut         ;   a comment, for the reader's benefit
-            jsr DMnemonic       ;   ,,
-            sec                 ; Set Carry to indicate that a relative
-            rts                 ;   instruction was handled   
-
+            jsr IncAddr         ; Get the relative branch operand
+            clc                 ; Add 2 to make it an offset from *
+            adc #2              ; ,,
+            tay                 ; Save offset in Y for later
+            bpl pos_off         ; ,,
+neg_off:    eor #$ff            ; If it's a negative offset, make absolute
+            adc #1              ;   value
+            tay                 ; Save offset in Y
+            lda #$ab            ; Minus token
+            .byte $3c           ; (TOP (skip word)
+pos_off:    lda #$aa            ; Plus token
+            jsr CharOut         ; ,,
+            tya                 ; Get positive or negative offset back
+            jsr HexOut          ;   and add to buffer
+            sec                 ; Set carry indicates a relative instruction
+            rts                 ;   has been handled
+            
 ; Check Range
 ; Check to see if C_PT is greater than or equal to Range End  
 ; In range if Carry is clear; out of range if Carry is set    
