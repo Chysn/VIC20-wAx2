@@ -1,3 +1,7 @@
+/Users/jej/personal/VIC20-wAx2
+
+
+;/Users/jej/personal/vic/misc/wax2test2.prg ==1201==
   100 print "{clr}{red}wax2 output test suite{blk}"
   105 gosub 670
   110 rem **** m ****
@@ -5,35 +9,35 @@
   130 .u on
   140 .m c000 c400
   150 .u off
-  160 .=0001 72da
+  160 .=0000 2972da
   170 print ". {blu}[pass]{blk}"
   180 rem **** i ****
   190 print "i tool..";
   200 .u on
   210 .i d000 d400
   220 .u off
-  230 .=0001 145d
+  230 .=0000 18145d
   240 print ". {blu}[pass]{blk}"
   250 rem **** % ****
   260 print "%{$a0}tool..";
   270 .u on
   280 .% 8000 8100
   290 .u off
-  300 .=0001 f6ff
+  300 .=0000 12f6ff
   310 print ". {blu}[pass]{blk}"
   320 print "c tool..";
-  330 .=0001 f6ff
+  330 .=0000 12f6ff
   340 .u on
   350 .c 8000 8100 8800
   360 .u off
-  370 .=0001 967e
+  370 .=0000 75967e
   380 print ". {blu}[pass]{blk}"
   390 rem **** d ****
   400 print "d tool..";
   410 .u on
   420 .d eabf eb25
   430 .u off
-  440 .=0001 ce12
+  440 .=0000 c8ce12
   450 print ". {blu}[pass]{blk}"
   460 rem **** h ****
   470 print "h tool"
@@ -41,19 +45,19 @@
   490 .u on
   500 .h 8000:80 40 20
   510 .u off
-  520 .=0001 070b
+  520 .=0000 2c070b
   530 print ". {blu}[pass]{blk}"
   540 print "  text..";
   550 .u on
   560 .h c000 "cbm"
   570 .u off
-  580 .=0001 0749
+  580 .=0000 2c0749
   590 print ". {blu}[pass]{blk}"
   600 print "  code..";
   610 .u on
   620 .h d000 ldy #$==
   630 .u off
-  640 .=0001 3c6f
+  640 .=0000 b53c6f
   650 print ". {blu}[pass]{blk}"
   660 print:print "{grn}all tests pass!{blu}":end
   670 .@-
