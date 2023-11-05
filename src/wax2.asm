@@ -1100,11 +1100,11 @@ get_bytes:  ldy #$00            ; Start with 0 index
             jmp PrintBuff       ;   ,,
 -loop:      jsr HexGet   
             bcc test_r          ; Bail out on the first non-hex byte
-add_test:   cmp (W_ADDR),y
-            bne test_err
-            jsr IncAddr
-            jmp loop
-test_r:     jmp Addr2CP
+add_test:   cmp (W_ADDR),y      ; Compare byte at working address to hex
+            bne test_err        ;   Error if wrong
+            jsr IncAddr         ; Go to next address
+            jmp loop            ; ,,
+test_r:     jmp Addr2CP         ; Update CP and BASIC variable
 test_err:   jmp MIS_ERROR       ; ?MISMATCH ERROR on failed test
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
