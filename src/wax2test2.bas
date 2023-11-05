@@ -9,56 +9,56 @@
   130 .u on
   140 .m c000 c400
   150 .u off
-  160 .=0001 61a5
-  170 print ". [pass]"
+  160 .=0001 72da
+  170 print ". {blu}[pass]{blk}"
   180 rem **** i ****
   190 print "i tool..";
   200 .u on
   210 .i d000 d400
   220 .u off
-  230 .=0001 792d
-  240 print ". [pass]"
+  230 .=0001 145d
+  240 print ". {blu}[pass]{blk}"
   250 rem **** % ****
   260 print "%{$a0}tool..";
   270 .u on
   280 .% 8000 8100
   290 .u off
-  300 .=0001 a6dc
-  310 print ". [pass]"
+  300 .=0001 f6ff
+  310 print ". {blu}[pass]{blk}"
   320 print "c tool..";
-  330 .u on
+  330 .=0001 f6ff
   340 .u on
   350 .c 8000 8100 8800
   360 .u off
-  370 .=0001 f479
-  380 print ". [pass]"
+  370 .=0001 967e
+  380 print ". {blu}[pass]{blk}"
   390 rem **** d ****
   400 print "d tool..";
   410 .u on
   420 .d eabf eb25
   430 .u off
-  440 .=0001 c632
-  450 print ". [pass]"
+  440 .=0001 ce12
+  450 print ". {blu}[pass]{blk}"
   460 rem **** h ****
   470 print "h tool"
   480 print "  hex ..";
   490 .u on
   500 .h 8000:80 40 20
   510 .u off
-  520 .=0001 042d
-  530 print ". [pass]"
+  520 .=0001 070b
+  530 print ". {blu}[pass]{blk}"
   540 print "  text..";
   550 .u on
   560 .h c000 "cbm"
   570 .u off
-  580 .=0001 0437
-  590 print ". [pass]"
+  580 .=0001 0749
+  590 print ". {blu}[pass]{blk}"
   600 print "  code..";
   610 .u on
   620 .h d000 ldy #$==
   630 .u off
-  640 .= 0001 2c1e
-  650 print ". [pass]"
+  640 .=0001 3c6f
+  650 print ". {blu}[pass]{blk}"
   660 print:print "{grn}all tests pass!{blu}":end
   670 .@-
   680 v = peek(807)*256+peek(806)
@@ -86,12 +86,15 @@
   910 .,*@e lda #0
   920 .,*   sta $02
   930 .,*   sta $01
+  935 .,*   sta $00
   940 .,*   lda #<@c
   950 .,*   sta $0326
   960 .,*   lda #>@c
   970 .,*   sta $0327
   980 .,*   rts
-  990 .,*@c clc
+  990 .,*@c inc $00
+  995 .,*   eor $00
+  997 .,*   clc
  1000 .,*   adc $02
  1010 .,*   sta $02
  1020 .,*   lda #0
